@@ -1,0 +1,2871 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>沉浸式电梯群控模拟器 V8 最终完结版</title>
+  <style>
+    :root {
+      --metal-light: #e0e0e0;
+      --metal-dark: #5a5a5a;
+      --led-off: #221111;
+      --led-on: #ff3333;
+      --btn-light: #fff8dc;
+    }
+    body {
+      margin: 0;
+      background-color: #1a1a1a;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Segoe UI', sans-serif;
+      overflow: hidden;
+      user-select: none;
+      color: #eee;
+    }
+    .layout { display: flex; gap: 16px; align-items: stretch; }
+
+    .elevator-shaft {
+      width: 800px; height: 90vh; background: linear-gradient(to bottom, #333, #111);
+      position: relative; box-shadow: 0 0 50px rgba(0,0,0,0.8);
+      border: 20px solid #444; border-radius: 10px; display: flex; overflow: hidden;
+    }
+    .interior-back {
+      position: absolute; width: 100%; height: 100%;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,0.3) 1px, transparent 1px),
+        linear-gradient(#888, #555);
+      background-size: 100px 100%, 100% 100%;
+      z-index: 1; transition: transform 0.2s;
+    }
+    .ad-screen {
+      position: absolute; top: 20%; left: 50%; transform: translateX(-50%);
+      width: 300px; height: 180px; background: #000; border: 4px solid #333;
+      border-radius: 4px; z-index: 1; display: flex; justify-content: center; align-items: center;
+      color: #fff; font-size: 14px; text-align: center; overflow: hidden;
+      box-shadow: 0 0 10px rgba(255,255,255,0.1);
+    }
+    .door-container {
+      position: absolute; top: 0; left: 15%; width: 60%; height: 100%;
+      z-index: 10; display: flex;
+    }
+    .door {
+      width: 50%; height: 100%;
+      background: repeating-linear-gradient(90deg,#c0c0c0,#c0c0c0 50px,#b0b0b0 50px,#b0b0b0 52px);
+      border: 1px solid #777; position: relative; transition: transform 2s ease-in-out;
+      box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+    }
+    .door.left { border-right: 2px solid #555; }
+    .door.right { border-left: 2px solid #555; }
+    .door-container.open .door.left { transform: translateX(-95%); }
+    .door-container.open .door.right { transform: translateX(95%); }
+
+    .control-panel {
+      position: absolute; right: 0; top: 0; width: 25%; height: 100%;
+      background: linear-gradient(135deg, #4a4a4a, #2a2a2a);
+      z-index: 20; border-left: 5px solid #111; padding: 20px; box-sizing: border-box;
+      display: flex; flex-direction: column; align-items: center;
+    }
+
+    .group-tabs { width: 100%; display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+    .elevator-tab {
+      flex: 1; min-width: 34px; padding: 4px 0; background: #222; border-radius: 8px;
+      text-align: center; font-size: 12px; color: #aaa; border: 1px solid #444; cursor: pointer;
+    }
+    .elevator-tab.active {
+      background: #ffcc33; color: #000; border-color: #ffcc33;
+      box-shadow: 0 0 6px rgba(255,204,51,0.6);
+    }
+
+    .display-screen {
+      width: 100%; height: 80px; background: #000; border: 2px solid #666;
+      margin-bottom: 10px; border-radius: 5px; display: flex; justify-content: center; align-items: center;
+      gap: 10px; box-shadow: inset 0 0 10px rgba(255,0,0,0.2); position: relative;
+    }
+    .floor-num {
+      font-family: 'Courier New', monospace; font-size: 50px; color: var(--led-off);
+      font-weight: bold;
+    }
+    .floor-num.active { color: var(--led-on); text-shadow: 0 0 10px var(--led-on); }
+    .direction-arrow { font-size: 40px; color: var(--led-off); }
+    .direction-arrow.active { color: #00ff00; text-shadow: 0 0 10px #00ff00; }
+    .display-sub {
+      position: absolute; bottom: 4px; left: 8px; right: 8px; font-size: 11px; color: #9f9;
+      display: flex; justify-content: space-between; opacity: 0.85;
+    }
+
+    .active-elevator-info { width: 100%; font-size: 12px; color: #ddd; margin-bottom: 8px; line-height: 1.4; }
+
+    .button-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; width: 100%; }
+
+    .elevator-btn {
+      width: 60px; height: 60px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #ddd, #999);
+      border: 3px solid #666; box-shadow: 2px 2px 5px rgba(0,0,0,0.5), inset 1px 1px 2px rgba(255,255,255,0.8);
+      font-size: 24px; font-weight: bold; color: #333; cursor: pointer;
+      display: flex; justify-content: center; align-items: center; transition: all 0.1s; margin: 0 auto;
+    }
+    .elevator-btn:active { transform: scale(0.95); }
+    .elevator-btn.pressed {
+      box-shadow: 0 0 15px var(--btn-light), inset 1px 1px 2px rgba(255,255,255,0.8);
+      border-color: #ffaa00; color: #ff5500;
+      background: radial-gradient(circle at 30% 30%, #fff, #ffddaa);
+      text-shadow: 0 0 5px orange;
+    }
+    .elevator-btn.disabled-btn,
+    .hall-btn.disabled-btn {
+      opacity: 0.25 !important;
+      filter: grayscale(0.7);
+      pointer-events: none;
+    }
+
+    .func-btn-group { display: flex; gap: 10px; margin-top: 20px; width: 100%; justify-content: space-around; }
+    .func-btn { font-size: 18px; width: 50px; height: 50px; }
+
+    .info-plate {
+      margin-top: auto; border: 1px solid #666; background: #ccc; padding: 10px; font-size: 10px; color: #000;
+      width: 100%; text-align: center;
+    }
+
+    .shaking { animation: shake 0.5s infinite; }
+    @keyframes shake {
+      0% { transform: translateY(0); }
+      25% { transform: translateY(1px); }
+      50% { transform: translateY(0); }
+      75% { transform: translateY(-1px); }
+      100% { transform: translateY(0); }
+    }
+
+    .status-log {
+      position: absolute; top: 20px; left: 20px; color: #0f0; font-family: monospace;
+      background: rgba(0,0,0,0.7); padding: 10px; border: 1px solid #0f0; pointer-events: none;
+      z-index: 100; font-size: 12px; line-height: 1.4; min-width: 260px;
+    }
+
+    .floor-panel {
+      width: 200px; height: 90vh; background: #111; border: 2px solid #444; border-radius: 10px;
+      padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; font-size: 12px;
+    }
+    .floor-panel-title { text-align: center; font-weight: bold; margin-bottom: 6px; }
+
+    .floor-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 2px 0; gap: 4px;
+    }
+    .floor-label { width: 24px; text-align: center; color: #ccc; }
+
+    .hall-btn {
+      width: 20px; height: 20px; border-radius: 4px; border: 1px solid #555; background: #222;
+      color: #888; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px;
+    }
+    .hall-btn.disabled { opacity: 0.2; pointer-events: none; }
+    .hall-btn.active {
+      background: #ffcc33; color: #000; border-color: #ffcc33; box-shadow: 0 0 4px #ffcc33;
+    }
+
+    .heatbar { flex: 1; height: 6px; border-radius: 3px; background: #222; overflow: hidden; }
+    .heatbar-inner {
+      height: 100%; width: 0%; background: linear-gradient(to right,#4caf50,#ff9800,#f44336);
+      transition: width 0.2s;
+    }
+    .mood-icon { width: 18px; text-align: center; }
+
+    .group-panel {
+      width: 320px; height: 90vh; background: #111; border: 2px solid #444; border-radius: 10px;
+      padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; font-size: 12px;
+    }
+
+    .side-tabs { display:flex; gap:6px; margin-bottom:6px; }
+    .side-tab {
+      flex:1; text-align:center; font-size:12px; padding:6px 0; cursor:pointer;
+      background:#1c1c1c; border:1px solid #333; border-radius:8px; color:#bbb;
+    }
+    .side-tab.active { background:#64b5f6; color:#000; border-color:#64b5f6; box-shadow:0 0 8px rgba(100,181,246,0.7); }
+
+    .side-section { display:none; flex-direction:column; height:100%; }
+    .side-section.active { display:flex; }
+
+    .group-header { text-align: center; font-weight: bold; margin-bottom: 4px; }
+
+    .elevator-list {
+      display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; max-height: 120px; overflow-y: auto;
+    }
+    .elevator-card {
+      padding: 4px 6px; border-radius: 6px; background: #1c1c1c; border: 1px solid #333; cursor: pointer;
+    }
+    .elevator-card.active { border-color: #ffcc33; box-shadow: 0 0 6px rgba(255,204,51,0.7); }
+    .elevator-card-title { font-size: 12px; font-weight: bold; margin-bottom: 2px; }
+    .elevator-card-body { display: flex; justify-content: space-between; font-size: 11px; }
+
+    .group-settings { margin-top: 4px; padding-top: 4px; border-top: 1px solid #333; }
+    .group-settings label { display: block; margin-bottom: 4px; }
+    .group-settings input[type="number"], .group-settings select {
+      width: 100%; font-size: 11px; padding: 3px 4px; background: #222; border: 1px solid #444;
+      color: #eee; border-radius: 4px; box-sizing: border-box;
+    }
+    .group-settings input[type="range"] { width: 100%; }
+    .group-settings .inline { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+    .lock-all { opacity: 0.45; pointer-events: none; }
+
+    .events-log {
+      margin-top: 4px; padding-top: 4px; border-top: 1px solid #333; flex: 1; overflow-y: auto;
+      font-family: monospace; font-size: 11px;
+    }
+    .event-line { margin-bottom: 2px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+    .event-line.info { color: #ccc; }
+    .event-line.warn { color: #ff9800; }
+    .event-line.error { color: #ff5252; }
+    .event-line.say { color: #9ad; }
+
+    .career-panel {
+      border: 1px solid #333; border-radius: 6px; padding: 6px; background: #181818;
+      margin-bottom: 4px; font-size: 11px;
+    }
+    .career-header { font-weight: bold; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+    .career-row { margin-bottom: 3px; display: flex; align-items: center; justify-content: space-between; gap: 4px; flex-wrap: wrap; }
+    .career-row span.value { font-weight: bold; color: #ffeb3b; }
+    .career-small-btn {
+      border-radius: 4px; border: 1px solid #555; background: #222; color: #eee;
+      padding: 0 6px; cursor: pointer; font-size: 10px;
+    }
+    .career-small-btn:hover { background: #444; }
+    .career-main-btn {
+      border-radius: 4px; border: 1px solid #666; background: #333; color: #eee;
+      padding: 4px 8px; cursor: pointer; font-size: 11px; width: 100%;
+    }
+    .career-main-btn:hover { background: #555; }
+
+    .career-rep-bar { flex: 1; height: 6px; border-radius: 3px; background: #222; overflow: hidden; margin-left: 4px; }
+    .career-rep-inner { height: 100%; width: 50%; background: linear-gradient(to right,#f44336,#ffeb3b,#4caf50); transition: width 0.2s; }
+
+    .policy-panel{
+      border-top:1px dashed #333; margin-top:6px; padding-top:6px;
+      display:flex; flex-direction:column; gap:6px;
+    }
+    .policy-title{ font-weight:bold; color:#ffd54f; }
+    .policy-item{
+      border:1px solid #333; border-radius:6px; padding:6px; background:#141414;
+      display:flex; flex-direction:column; gap:4px;
+    }
+    .policy-row{
+      display:flex; justify-content:space-between; align-items:center; gap:6px;
+    }
+    .policy-desc{ font-size:10px; color:#bbb; line-height:1.4; }
+    .policy-btn{
+      border:1px solid #666; background:#222; color:#eee; font-size:11px; padding:4px 6px;
+      border-radius:6px; cursor:pointer;
+    }
+    .policy-btn.on{
+      background:#81c784; color:#000; border-color:#81c784; box-shadow:0 0 6px rgba(129,199,132,0.5);
+    }
+    .policy-btn.disabled{ opacity:.4; pointer-events:none; }
+
+    .tech-panel {
+      border-top: 1px dashed #333; margin-top: 6px; padding-top: 6px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .tech-item { border: 1px solid #333; border-radius: 6px; padding: 6px; background: #141414; }
+    .tech-title { font-weight: bold; color: #90caf9; display:flex; justify-content:space-between; }
+    .tech-desc { color:#bbb; margin-top:2px; font-size:10px; line-height:1.4; }
+    .tech-btn { margin-top:4px; width:100%; font-size:11px; padding:4px 6px; border:1px solid #555; border-radius:6px; background:#222; color:#eee; cursor:pointer;}
+    .tech-btn:hover{ background:#333; }
+    .tech-btn.disabled{ opacity:.4; pointer-events:none; }
+
+    .mode-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      display: flex; justify-content: center; align-items: center; z-index: 1000;
+    }
+    .mode-dialog {
+      background: #202020; padding: 24px 28px; border-radius: 12px; border: 1px solid #555;
+      max-width: 420px; width: 90%; box-shadow: 0 0 20px rgba(0,0,0,0.8); text-align: center;
+    }
+    .mode-dialog h1 { margin: 0 0 8px; font-size: 20px; }
+    .mode-dialog p { margin: 4px 0; font-size: 13px; color: #ccc; }
+    .mode-buttons { display: flex; gap: 10px; margin: 14px 0; flex-wrap: wrap; justify-content: center; }
+    .mode-btn {
+      flex: 1; min-width: 120px; border-radius: 999px; border: none; padding: 10px 14px;
+      font-size: 14px; cursor: pointer; font-weight: bold;
+    }
+    .mode-btn-career { background: linear-gradient(135deg,#ffb300,#ff6f00); color: #000; box-shadow: 0 0 10px rgba(255,193,7,0.7); }
+    .mode-btn-free { background: linear-gradient(135deg,#64b5f6,#1976d2); color: #fff; box-shadow: 0 0 10px rgba(33,150,243,0.6); }
+    .mode-tip { font-size: 12px; color: #aaa; }
+    .mode-dialog h2 { margin-top: 0; font-size: 18px; }
+
+    .story-panel { display:flex; flex-direction:column; gap:6px; height:100%; }
+    .story-queue {
+      border:1px solid #333; border-radius:8px; background:#151515; padding:6px; max-height:180px; overflow:auto;
+      font-size:11px;
+    }
+    .queue-item {
+      padding:4px 6px; border-radius:6px; border:1px solid #222; margin-bottom:4px; cursor:pointer; background:#1c1c1c;
+    }
+    .queue-item.active { border-color:#ffcc33; box-shadow:0 0 6px rgba(255,204,51,0.7); }
+    .story-current {
+      flex:1; border:1px solid #333; border-radius:8px; background:#0f0f0f; padding:8px; display:flex; flex-direction:column; gap:8px;
+    }
+    .story-title { font-weight:bold; font-size:13px; color:#ffd54f; }
+    .story-desc { font-size:12px; color:#ddd; line-height:1.5; white-space:pre-wrap; }
+    .story-options { display:flex; flex-direction:column; gap:6px; margin-top:auto; }
+    .story-btn {
+      border:1px solid #555; background:#222; color:#eee; font-size:12px; padding:8px; border-radius:8px; cursor:pointer; text-align:left;
+    }
+    .story-btn:hover { background:#333; }
+    .story-hint { font-size:11px; color:#aaa; }
+
+    .building-panel { display:flex; flex-direction:column; gap:6px; height:100%; }
+    .building-buttons { display:flex; flex-wrap:wrap; gap:6px; }
+    .building-btn {
+      flex:1; min-width:70px; text-align:center; padding:6px 0; border-radius:8px; cursor:pointer;
+      border:1px solid #333; background:#1c1c1c; color:#bbb; font-size:12px;
+    }
+    .building-btn.active { background:#81c784; color:#000; border-color:#81c784; box-shadow:0 0 8px rgba(129,199,132,0.6); }
+    .building-card {
+      border:1px solid #333; border-radius:8px; background:#151515; padding:8px; font-size:12px; line-height:1.5;
+      display:flex; flex-direction:column; gap:6px;
+    }
+    .building-card select {
+      width:100%; padding:4px; border-radius:6px; background:#222; color:#eee; border:1px solid #444; font-size:12px;
+    }
+    .building-tip { font-size:11px; color:#aaa; }
+
+    /* 自由模式工具箱 */
+    .free-tools{
+      border-top:1px solid #333; margin-top:6px; padding-top:6px; display:none; flex-direction:column; gap:6px;
+    }
+    .free-tools-title{ font-weight:bold; color:#64b5f6; }
+    .free-tools-buttons{ display:flex; flex-wrap:wrap; gap:6px; }
+    .free-tool-btn{
+      flex:1; min-width:90px; text-align:center; padding:6px 0; border-radius:8px; cursor:pointer;
+      border:1px solid #333; background:#1c1c1c; color:#ddd; font-size:12px;
+    }
+    .free-tool-btn:hover{ background:#2a2a2a; }
+  </style>
+</head>
+<body>
+
+  <!-- 模式选择 -->
+  <div class="mode-overlay" id="modeOverlay">
+    <div class="mode-dialog">
+      <h1>沉浸式电梯群控模拟器 V8</h1>
+      <p>请选择你要玩的模式：</p>
+      <div class="mode-buttons">
+        <button class="mode-btn mode-btn-career" id="btnCareerMode" onclick="startGame('career')">
+          生涯模式（重锤经营）
+        </button>
+        <button class="mode-btn mode-btn-free" id="btnFreeMode" onclick="startGame('free')">
+          自由模式（沙盒体验）
+        </button>
+      </div>
+      <p class="mode-tip">
+        生涯：每栋楼独立电梯组，从 1 台电梯起家，不能手动按按钮，只能经营扩建/科技/维护/事件。<br>
+        自由：全开设置、随便折腾 + 工具箱（编辑/传送/快进）。
+      </p>
+    </div>
+  </div>
+
+  <!-- 游戏结束 -->
+  <div class="mode-overlay" id="gameOverOverlay" style="display:none;">
+    <div class="mode-dialog">
+      <h2>生涯结束</h2>
+      <p id="gameOverReason">原因：资金亏空。</p>
+      <p>
+        最终来到第 <span id="gameOverDay">1</span> 天，<br>
+        资金 <span id="gameOverMoney">0</span> 元，口碑 <span id="gameOverRep">0</span> 分。
+      </p>
+      <div class="mode-buttons">
+        <button class="mode-btn mode-btn-career" id="btnRestartCareer">重新开始生涯</button>
+        <button class="mode-btn mode-btn-free" id="btnGoMainMenu">回到主菜单</button>
+      </div>
+      <p class="mode-tip">提示：若投票解雇倒计时归零，你会直接出局。</p>
+    </div>
+  </div>
+
+  <div class="status-log" id="statusLog">群控初始化中...</div>
+
+  <div class="layout">
+    <!-- 左侧：楼层呼梯 + 拥堵热力图 -->
+    <div class="floor-panel" id="floorPanel">
+      <div class="floor-panel-title">楼层呼梯 / 拥堵</div>
+    </div>
+
+    <!-- 中间：轿厢视角 -->
+    <div class="elevator-shaft" id="shaft">
+      <div class="interior-back">
+        <div class="ad-screen">
+          <div style="padding:20px; font-weight:bold; color: white;">
+            <div id="adText">今日新闻：<br>电梯文明乘梯宣传周启动</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="door-container open" id="doors">
+        <div class="door left"></div>
+        <div class="door right"></div>
+      </div>
+
+      <div class="control-panel">
+        <div class="group-tabs" id="groupTabs"></div>
+
+        <div class="display-screen">
+          <span class="direction-arrow" id="arrow-up">▲</span>
+          <span class="floor-num active" id="floor-display">1</span>
+          <span class="direction-arrow" id="arrow-down">▼</span>
+          <div class="display-sub">
+            <span id="displayState">IDLE</span>
+            <span id="displayHint">选择模式开始游戏</span>
+          </div>
+        </div>
+
+        <div class="active-elevator-info">
+          当前轿厢：<span id="activeElevatorLabel">E1</span><br>
+          乘客：<span id="activeElevatorLoad">0</span>/<span id="activeElevatorCap">0</span> · 情绪：<span id="activeElevatorMood">😊</span>
+        </div>
+
+        <div class="button-grid" id="btn-container"></div>
+
+        <div class="func-btn-group">
+          <div class="elevator-btn func-btn" id="btnOpenDoor">&#60;|&#62;</div>
+          <div class="elevator-btn func-btn" id="btnCloseDoor">&#62;|&#60;</div>
+          <div class="elevator-btn func-btn" style="color:red" id="btnAlarm">🔔</div>
+        </div>
+
+        <div class="info-plate">
+          载重 <span id="plateLoad">1000</span>KG<br>
+          定员 <span id="platePerson">13</span>人<br>
+          群控模式：AI 调度<br>
+          <span style="color:red; font-weight:bold">禁止打架 · 禁止吸烟</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧：群控/剧情/楼栋 -->
+    <div class="group-panel" id="groupPanel">
+
+      <div class="side-tabs">
+        <div class="side-tab active" data-tab="monitor">监控/设置</div>
+        <div class="side-tab" data-tab="story">剧情/事件</div>
+        <div class="side-tab" data-tab="building">楼栋视角</div>
+      </div>
+
+      <!-- 监控/设置 -->
+      <div class="side-section active" id="tab-monitor">
+        <div class="group-header">群控监控 / AI 抢梯</div>
+
+        <div class="career-panel">
+          <div class="career-header">
+            <span>当前模式：<span class="value" id="careerModeText">未开始</span></span>
+            <span id="careerModeSubText" style="font-size:10px;color:#aaa;">请先选择模式</span>
+          </div>
+          <div class="career-row">
+            <span>时间：</span>
+            <span>第 <span class="value" id="careerDay">1</span> 天 · <span class="value" id="careerTime">08:00</span></span>
+          </div>
+          <div class="career-row"><span>资金：</span><span class="value" id="careerMoney">0</span><span> 元</span></div>
+          <div class="career-row">
+            <span>口碑：</span>
+            <span class="value" id="careerReputation">0</span>
+            <span id="careerReputationFace">😐</span>
+            <div class="career-rep-bar"><div class="career-rep-inner" id="careerReputationBar"></div></div>
+          </div>
+          <div class="career-row">
+            <span>票价：</span>
+            <div>
+              <button class="career-small-btn" id="priceDown">-</button>
+              <span class="value" id="careerPrice">3</span><span> 元</span>
+              <button class="career-small-btn" id="priceUp">+</button>
+            </div>
+          </div>
+          <div class="career-row">
+            <span>维护等级：</span>
+            <span class="value" id="careerMaintenance">1</span>
+            <button class="career-small-btn" id="btnUpgradeMaint">升级维护</button>
+          </div>
+
+          <!-- 生涯扩建 -->
+          <div class="career-row">
+            <span>扩建楼栋：</span>
+            <button class="career-small-btn" id="btnExpandBuilding">扩建</button>
+            <span id="expandBuildingCostText" style="font-size:10px;color:#aaa;"></span>
+          </div>
+          <div class="career-row">
+            <span>当前楼栋扩建电梯：</span>
+            <button class="career-small-btn" id="btnExpandElevator">购买</button>
+            <span id="expandElevatorCostText" style="font-size:10px;color:#aaa;"></span>
+          </div>
+          <div class="career-row">
+            <span>扩建楼层：</span>
+            <button class="career-small-btn" id="btnExpandFloors">加层</button>
+            <span id="expandFloorsCostText" style="font-size:10px;color:#aaa;"></span>
+          </div>
+
+          <div class="career-row"><span>今日投诉：</span><span class="value" id="careerComplaints">0</span></div>
+          <div class="career-row">
+            <span>追责次数：</span><span class="value" id="careerStrikes">0</span>
+          </div>
+          <div class="career-row">
+            <span>解雇投票倒计时：</span>
+            <span class="value" id="careerVoteDays">-</span>
+          </div>
+
+          <!-- 运营策略 -->
+          <div class="policy-panel">
+            <div class="policy-title">运营策略（生涯专属）</div>
+
+            <div class="policy-item">
+              <div class="policy-row">
+                <span>📢 引导员/文明宣传</span>
+                <button class="policy-btn" id="btnToggleGuide">关闭</button>
+              </div>
+              <div class="policy-desc">
+                每日成本：<span class="value" id="policyGuideCost">300</span> 元。<br>
+                效果：降低排队争执与轿厢冲突概率，乘客等待情绪下降更慢。
+              </div>
+            </div>
+
+            <div class="policy-item">
+              <div class="policy-row">
+                <span>👮 安保巡逻</span>
+                <button class="policy-btn" id="btnToggleSecurity">关闭</button>
+              </div>
+              <div class="policy-desc">
+                每日成本：<span class="value" id="policySecurityCost">450</span> 元。<br>
+                效果：显著降低“梯毁”出现与破坏概率，减少人为故障负面。
+              </div>
+            </div>
+          </div>
+
+          <!-- 科技树 -->
+          <div class="tech-panel">
+            <div style="font-weight:bold;">科技树（生涯专属）</div>
+            <div id="techList"></div>
+          </div>
+
+          <div class="career-row"><button class="career-main-btn" id="btnBackToMenu">回到主菜单（暂停）</button></div>
+        </div>
+
+        <div class="elevator-list" id="elevatorList"></div>
+
+        <div class="group-settings" id="settingsBox">
+          <label>总楼层（全楼一致）
+            <input type="number" id="setFloors" min="3" max="30">
+          </label>
+          <label>当前楼栋电梯数量
+            <input type="number" id="setElevators" min="1" max="4">
+          </label>
+          <label>AI 策略
+            <select id="setAlgo">
+              <option value="ai">智能综合（AI 抢梯）</option>
+              <option value="nearest">最近电梯</option>
+              <option value="random">随机抢单</option>
+            </select>
+          </label>
+          <label>客流强度（全楼一致）
+            <input type="range" id="setTraffic" min="1" max="10">
+          </label>
+          <div class="inline">
+            <input type="checkbox" id="setFaults" checked>
+            <span>启用随机故障</span>
+          </div>
+          <div class="inline" style="color:#aaa;">
+            <span id="settingsLockHint">自由模式可直接修改设置</span>
+          </div>
+        </div>
+
+        <!-- 自由模式工具箱（V8 加强） -->
+        <div class="free-tools" id="freeTools">
+          <div class="free-tools-title">自由模式工具箱 V8</div>
+          <div class="free-tools-buttons">
+            <button class="free-tool-btn" id="btnFreeSpawnNormal">+ 乘客</button>
+            <button class="free-tool-btn" id="btnFreeSpawnFan">+ 爱好者</button>
+            <button class="free-tool-btn" id="btnFreeSpawnSab">+ 梯毁</button>
+            <button class="free-tool-btn" id="btnFreeClearFaults">清除故障</button>
+            <button class="free-tool-btn" id="btnFreeClearAll">清空等待</button>
+
+            <button class="free-tool-btn" id="btnFreeTeleport">传送当前梯</button>
+            <button class="free-tool-btn" id="btnFreeEditElev">电梯编辑器</button>
+            <button class="free-tool-btn" id="btnFreeFF1h">快进 1 小时</button>
+            <button class="free-tool-btn" id="btnFreeFF1d">快进 1 天</button>
+          </div>
+        </div>
+
+        <div class="events-log" id="eventsLog"></div>
+      </div>
+
+      <!-- 剧情/事件 -->
+      <div class="side-section" id="tab-story">
+        <div class="story-panel">
+          <div style="font-weight:bold;">事件队列</div>
+          <div class="story-queue" id="storyQueue"></div>
+
+          <div style="font-weight:bold;">当前事件</div>
+          <div class="story-current" id="storyCurrent"></div>
+        </div>
+      </div>
+
+      <!-- 楼栋视角 -->
+      <div class="side-section" id="tab-building">
+        <div class="building-panel">
+          <div style="font-weight:bold;">楼栋视角（切换监控/客流）</div>
+          <div class="building-buttons" id="buildingButtons"></div>
+          <div class="building-card" id="buildingCard"></div>
+          <div class="building-tip" id="buildingTip"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  window.onerror = function(msg, url, line, col, err){
+    const text = `JS报错：${msg} @${line}:${col}`;
+    const log = document.getElementById('statusLog');
+    if (log) log.innerHTML = text;
+    console.error(err);
+  };
+
+  // ================================
+  //   群控电梯模拟器 V8 最终完结版
+  //   V8 新增：
+  //   1) 梯毁伪装（未露馅前当普通人）
+  //   2) 摄影大赛 Buff（生涯长期增益）
+  //   3) 自由模式编辑器 / 传送 / 快进
+  // ================================
+
+  let gameMode = null;
+  let simulationRunning = false;
+
+  const CAREER_DEFAULT = {
+    day: 1,
+    timeMinutes: 8 * 60,
+    money: 8000,
+    reputation: 75,
+    ticketPrice: 3,
+    maintenanceLevel: 1,
+    complaints: 0,
+    servedToday: 0,
+    buildingsExpanded: 0,
+    strikes: 0,
+    voteDaysLeft: null,
+    tech: { dispatch: 0, comfort: 0, reliability: 0 },
+    policies: { crowdGuide:false, securityPatrol:false },
+    stats: { fansServed:0, sabotageIncidents:0, fansServedToday:0 },
+    buffs: { photoContestUntilDay: 0, repGainMult:1, fanSpawnMult:1, tipMult:1 }
+  };
+  let career = { ...CAREER_DEFAULT };
+
+  const SETTINGS_KEY = 'immersive_elevator_group_settings_v8';
+  const SETTINGS_DEFAULT = {
+    floors: 8,
+    algo: 'ai',
+    traffic: 5,
+    randomFaults: true,
+    buildings: [
+      { label: 'A座', type: 'residential', elevatorCount: 1 }
+    ],
+    currentBuilding: 0
+  };
+
+  const BUILDING_TYPES = {
+    residential: { name:'住宅', trafficBias:'random', patienceBias:1 },
+    office:      { name:'写字楼', trafficBias:'commute', patienceBias:2 },
+    mall:        { name:'商场', trafficBias:'mid', patienceBias:1 },
+    hospital:    { name:'医院', trafficBias:'random', patienceBias:3 }
+  };
+
+  const ELEVATOR_MODELS_BASE = [
+    { key:'slow', name:'星玛7000 慢车', capacity:12, loadKg:1000, speedPerFloor:1.6, doorTime:2.2 },
+    { key:'comfort', name:'AI 静音舒适', capacity:14, loadKg:1000, speedPerFloor:1.2, doorTime:2.0 }
+  ];
+  const ELEVATOR_MODELS_UNLOCK = {
+    highspeed: { key:'highspeed', name:'极速 Pro 高速', capacity:14, loadKg:1000, speedPerFloor:0.75, doorTime:1.4, need:{dispatch:3} },
+    heavyload: { key:'heavyload', name:'巨载 2000KG 大载重', capacity:20, loadKg:2000, speedPerFloor:1.25, doorTime:2.1, need:{comfort:3} },
+    hospitalP: { key:'hospitalP', name:'急诊优先 · 医院专用', capacity:16, loadKg:1200, speedPerFloor:0.95, doorTime:1.6, need:{reliability:3}, hospitalPriority:true }
+  };
+
+  let settings = loadSettings();
+
+  let elevators = [];
+  let hallCalls = [];
+  let passengers = [];
+  let nextPassengerId = 1;
+  let nextCallId = 1;
+  let activeElevatorIndex = 0;
+
+  let spawnTimer = null;
+  let moodTimer = null;
+  let adTimer = null;
+  let adForceUntil = 0;
+  let movingCount = 0;
+  let lastFightAtFloor = {};
+  let lastCabinConflictAt = {};
+  let lastFestivalDay = 0;
+  let lastOwnerGroupDay = 0;
+
+  let festival = null;
+
+  let storyQueue = [];
+  let nextStoryId = 1;
+  let focusedStoryId = null;
+
+  let audioCtx = null;
+  let motorOsc = null;
+
+  let statusLog, floorPanel, shaft, doors, btnContainer, groupTabs, elevatorList, eventsLog;
+  let floorDisplay, arrowUp, arrowDown, adTextEl, displayState, displayHint;
+  let activeElevatorLabel, activeElevatorLoad, activeElevatorCap, activeElevatorMood;
+  let plateLoad, platePerson;
+
+  let setFloors, setElevators, setAlgo, setTraffic, setFaults, settingsLockHint, settingsBox;
+
+  let modeOverlay, gameOverOverlay;
+  let btnCareerMode, btnFreeMode, btnRestartCareer, btnGoMainMenu, btnBackToMenu;
+
+  let careerModeText, careerModeSubText, careerDay, careerTime, careerMoney, careerReputation, careerReputationFace, careerReputationBar;
+  let careerPrice, careerMaintenance, careerComplaints, careerStrikesEl, careerVoteDaysEl;
+  let priceUpBtn, priceDownBtn, upgradeMaintBtn, expandBuildingBtn, expandElevatorBtn, expandFloorsBtn;
+  let expandBuildingCostText, expandElevatorCostText, expandFloorsCostText;
+  let techListEl;
+
+  let gameOverReason, gameOverDay, gameOverMoney, gameOverRep;
+
+  let sideTabs;
+  let storyQueueEl, storyCurrentEl;
+  let buildingButtonsEl, buildingCardEl, buildingTipEl;
+
+  let btnToggleGuide, btnToggleSecurity, policyGuideCostEl, policySecurityCostEl;
+
+  let freeToolsEl, btnFreeSpawnNormal, btnFreeSpawnFan, btnFreeSpawnSab, btnFreeClearFaults, btnFreeClearAll;
+  let btnFreeTeleport, btnFreeEditElev, btnFreeFF1h, btnFreeFF1d;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    statusLog = document.getElementById('statusLog');
+    floorPanel = document.getElementById('floorPanel');
+    shaft = document.getElementById('shaft');
+    doors = document.getElementById('doors');
+    btnContainer = document.getElementById('btn-container');
+    groupTabs = document.getElementById('groupTabs');
+    elevatorList = document.getElementById('elevatorList');
+    eventsLog = document.getElementById('eventsLog');
+
+    floorDisplay = document.getElementById('floor-display');
+    arrowUp = document.getElementById('arrow-up');
+    arrowDown = document.getElementById('arrow-down');
+    adTextEl = document.getElementById('adText');
+    displayState = document.getElementById('displayState');
+    displayHint = document.getElementById('displayHint');
+
+    activeElevatorLabel = document.getElementById('activeElevatorLabel');
+    activeElevatorLoad = document.getElementById('activeElevatorLoad');
+    activeElevatorCap = document.getElementById('activeElevatorCap');
+    activeElevatorMood = document.getElementById('activeElevatorMood');
+
+    plateLoad = document.getElementById('plateLoad');
+    platePerson = document.getElementById('platePerson');
+
+    setFloors = document.getElementById('setFloors');
+    setElevators = document.getElementById('setElevators');
+    setAlgo = document.getElementById('setAlgo');
+    setTraffic = document.getElementById('setTraffic');
+    setFaults = document.getElementById('setFaults');
+    settingsLockHint = document.getElementById('settingsLockHint');
+    settingsBox = document.getElementById('settingsBox');
+
+    modeOverlay = document.getElementById('modeOverlay');
+    gameOverOverlay = document.getElementById('gameOverOverlay');
+    btnCareerMode = document.getElementById('btnCareerMode');
+    btnFreeMode = document.getElementById('btnFreeMode');
+    btnRestartCareer = document.getElementById('btnRestartCareer');
+    btnGoMainMenu = document.getElementById('btnGoMainMenu');
+    btnBackToMenu = document.getElementById('btnBackToMenu');
+
+    careerModeText = document.getElementById('careerModeText');
+    careerModeSubText = document.getElementById('careerModeSubText');
+    careerDay = document.getElementById('careerDay');
+    careerTime = document.getElementById('careerTime');
+    careerMoney = document.getElementById('careerMoney');
+    careerReputation = document.getElementById('careerReputation');
+    careerReputationFace = document.getElementById('careerReputationFace');
+    careerReputationBar = document.getElementById('careerReputationBar');
+    careerPrice = document.getElementById('careerPrice');
+    careerMaintenance = document.getElementById('careerMaintenance');
+    careerComplaints = document.getElementById('careerComplaints');
+    careerStrikesEl = document.getElementById('careerStrikes');
+    careerVoteDaysEl = document.getElementById('careerVoteDays');
+
+    priceUpBtn = document.getElementById('priceUp');
+    priceDownBtn = document.getElementById('priceDown');
+    upgradeMaintBtn = document.getElementById('btnUpgradeMaint');
+    expandBuildingBtn = document.getElementById('btnExpandBuilding');
+    expandElevatorBtn = document.getElementById('btnExpandElevator');
+    expandFloorsBtn = document.getElementById('btnExpandFloors');
+    expandBuildingCostText = document.getElementById('expandBuildingCostText');
+    expandElevatorCostText = document.getElementById('expandElevatorCostText');
+    expandFloorsCostText = document.getElementById('expandFloorsCostText');
+    techListEl = document.getElementById('techList');
+
+    gameOverReason = document.getElementById('gameOverReason');
+    gameOverDay = document.getElementById('gameOverDay');
+    gameOverMoney = document.getElementById('gameOverMoney');
+    gameOverRep = document.getElementById('gameOverRep');
+
+    sideTabs = document.querySelectorAll('.side-tab');
+    storyQueueEl = document.getElementById('storyQueue');
+    storyCurrentEl = document.getElementById('storyCurrent');
+    buildingButtonsEl = document.getElementById('buildingButtons');
+    buildingCardEl = document.getElementById('buildingCard');
+    buildingTipEl = document.getElementById('buildingTip');
+
+    btnToggleGuide = document.getElementById('btnToggleGuide');
+    btnToggleSecurity = document.getElementById('btnToggleSecurity');
+    policyGuideCostEl = document.getElementById('policyGuideCost');
+    policySecurityCostEl = document.getElementById('policySecurityCost');
+
+    freeToolsEl = document.getElementById('freeTools');
+    btnFreeSpawnNormal = document.getElementById('btnFreeSpawnNormal');
+    btnFreeSpawnFan = document.getElementById('btnFreeSpawnFan');
+    btnFreeSpawnSab = document.getElementById('btnFreeSpawnSab');
+    btnFreeClearFaults = document.getElementById('btnFreeClearFaults');
+    btnFreeClearAll = document.getElementById('btnFreeClearAll');
+
+    btnFreeTeleport = document.getElementById('btnFreeTeleport');
+    btnFreeEditElev = document.getElementById('btnFreeEditElev');
+    btnFreeFF1h = document.getElementById('btnFreeFF1h');
+    btnFreeFF1d = document.getElementById('btnFreeFF1d');
+
+    initSideTabs();
+    initSettingsUI();
+    initButtons();
+    initModeButtons();
+    initPolicyButtons();
+    initFreeTools();
+
+    updateCareerUI();
+    buildBuildingUI();
+    renderTechUI();
+    renderStoryUI();
+    startAdLoop();
+  });
+
+  function initSideTabs(){
+    sideTabs.forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        sideTabs.forEach(t=>t.classList.remove('active'));
+        tab.classList.add('active');
+        const name = tab.dataset.tab;
+        document.querySelectorAll('.side-section').forEach(sec=>sec.classList.remove('active'));
+        document.getElementById('tab-'+name).classList.add('active');
+      });
+    });
+  }
+
+  function initPolicyButtons(){
+    if (btnToggleGuide) btnToggleGuide.addEventListener('click', ()=>{
+      if (gameMode!=='career') { logEvent('政策仅生涯生效。','warn'); return; }
+      career.policies.crowdGuide = !career.policies.crowdGuide;
+      logEvent(`运营策略：引导员/文明宣传 ${career.policies.crowdGuide?'开启':'关闭'}`,'info');
+      updateCareerUI();
+    });
+    if (btnToggleSecurity) btnToggleSecurity.addEventListener('click', ()=>{
+      if (gameMode!=='career') { logEvent('政策仅生涯生效。','warn'); return; }
+      career.policies.securityPatrol = !career.policies.securityPatrol;
+      logEvent(`运营策略：安保巡逻 ${career.policies.securityPatrol?'开启':'关闭'}`,'info');
+      updateCareerUI();
+    });
+  }
+
+  function initFreeTools(){
+    if (btnFreeSpawnNormal) btnFreeSpawnNormal.addEventListener('click', ()=>spawnForcedPassenger('normal'));
+    if (btnFreeSpawnFan) btnFreeSpawnFan.addEventListener('click', ()=>spawnForcedPassenger('enthusiast'));
+    if (btnFreeSpawnSab) btnFreeSpawnSab.addEventListener('click', ()=>spawnForcedPassenger('saboteur'));
+    if (btnFreeClearFaults) btnFreeClearFaults.addEventListener('click', ()=>{
+      elevators.forEach(e=>{ if(e.fault) clearFault(e); });
+      logEvent('自由工具：已清除全楼故障','info');
+    });
+    if (btnFreeClearAll) btnFreeClearAll.addEventListener('click', ()=>{
+      passengers.forEach(p=>p.state='gone');
+      hallCalls.forEach(c=>c.served=true);
+      updateHeatmap();
+      updateStatusLog();
+      logEvent('自由工具：已清空等待/呼梯/乘客','info');
+    });
+
+    // V8 新增自由功能
+    if (btnFreeTeleport) btnFreeTeleport.addEventListener('click', freeTeleportActiveElevator);
+    if (btnFreeEditElev) btnFreeEditElev.addEventListener('click', freeEditActiveElevator);
+    if (btnFreeFF1h) btnFreeFF1h.addEventListener('click', ()=>freeFastForward(60));
+    if (btnFreeFF1d) btnFreeFF1d.addEventListener('click', ()=>freeFastForward(24*60));
+  }
+
+  function freeTeleportActiveElevator(){
+    if (gameMode!=='free' || !simulationRunning){ logEvent('仅自由模式运行中可用。','warn'); return; }
+    const e = elevators.find(x=>x.id===activeElevatorIndex);
+    if (!e) return;
+    const val = prompt(`传送 ${e.name} 到几层？(1-${settings.floors})`, e.currentFloor);
+    if (val==null) return;
+    const f = clamp(parseInt(val,10)||e.currentFloor,1,settings.floors);
+    clearInterval(e.moveTimer); e.moveTimer=null;
+    e.currentFloor=f; e.state='IDLE'; e.direction=0; e.doorOpen=true; e.stops=[];
+    movingCount=0; updateMotorSound(); shaft.classList.remove('shaking');
+    logEvent(`自由传送：${e.name} -> ${f}F`,'info');
+    syncActiveUI();
+  }
+
+  function freeEditActiveElevator(){
+    if (gameMode!=='free' || !simulationRunning){ logEvent('仅自由模式运行中可用。','warn'); return; }
+    const e = elevators.find(x=>x.id===activeElevatorIndex);
+    if (!e) return;
+    const cap = prompt(`编辑容量 capacity（当前 ${e.capacity}）`, e.capacity);
+    if (cap==null) return;
+    const spd = prompt(`编辑速度 speedPerFloor 秒/层（当前 ${e.speedPerFloor}）`, e.speedPerFloor);
+    if (spd==null) return;
+    const door = prompt(`编辑开关门 doorTime 秒（当前 ${e.doorTime}）`, e.doorTime);
+    if (door==null) return;
+
+    e.capacity = clamp(parseInt(cap,10)||e.capacity, 4, 50);
+    e.speedPerFloor = clamp(parseFloat(spd)||e.speedPerFloor, 0.3, 4);
+    e.doorTime = clamp(parseFloat(door)||e.doorTime, 0.6, 5);
+
+    logEvent(`自由编辑：${e.name} 参数已更新（cap=${e.capacity}, speed=${e.speedPerFloor}, door=${e.doorTime}）`,'info');
+    syncActiveUI();
+    updateElevatorCards();
+  }
+
+  function freeFastForward(mins){
+    if (gameMode!=='free' || !simulationRunning){ logEvent('仅自由模式运行中可用。','warn'); return; }
+    career.timeMinutes += mins;
+    // 自由模式不结算输赢，但会让你看到时间变化
+    logEvent(`自由快进：+${mins} 分钟（当前 ${formatTime(career.timeMinutes)}）`,'info');
+    updateCareerUI();
+  }
+
+  function spawnForcedPassenger(trait){
+    if (!simulationRunning || gameMode!=='free') { logEvent('仅自由模式运行中可用。','warn'); return; }
+    const bidx = settings.currentBuilding;
+    const b = settings.buildings[bidx];
+    const bias = BUILDING_TYPES[b.type];
+
+    let from, to;
+    if (bias.trafficBias === 'commute') {
+      from = randomInt(1, Math.min(3, settings.floors));
+      to = randomInt(Math.ceil(settings.floors*0.6), settings.floors);
+    } else if (bias.trafficBias === 'mid') {
+      from = randomInt(Math.floor(settings.floors*0.3), Math.floor(settings.floors*0.7));
+      to = randomInt(1, settings.floors);
+    } else {
+      from = randomInt(1, settings.floors);
+      to = randomInt(1, settings.floors);
+    }
+    if (to === from) to = from === settings.floors ? from - 1 : from + 1;
+
+    const p = makePassenger(from,to,bidx,trait);
+    passengers.push(p);
+    hallCall(from, to>from?'up':'down', p);
+    logEvent(`自由刷客：P${p.id}（${traitLabelVisible(p)}） ${from}F → ${to}F`,'info');
+    updateHeatmap();
+  }
+
+  function initModeButtons() {
+    if (btnCareerMode) btnCareerMode.addEventListener('click', () => startGame('career'));
+    if (btnFreeMode) btnFreeMode.addEventListener('click', () => startGame('free'));
+
+    if (btnRestartCareer) btnRestartCareer.addEventListener('click', () => {
+      gameOverOverlay.style.display = 'none';
+      startGame('career');
+    });
+
+    if (btnGoMainMenu) btnGoMainMenu.addEventListener('click', () => {
+      gameOverOverlay.style.display = 'none';
+      simulationRunning = false;
+      gameMode = null;
+      if (spawnTimer) clearInterval(spawnTimer);
+      if (moodTimer) clearInterval(moodTimer);
+      displayHint.innerText = '返回主菜单，请重新选择模式';
+      modeOverlay.style.display = 'flex';
+      updateCareerUI();
+      updateSettingsLock();
+    });
+
+    if (btnBackToMenu) btnBackToMenu.addEventListener('click', () => {
+      simulationRunning = false;
+      if (spawnTimer) clearInterval(spawnTimer);
+      if (moodTimer) clearInterval(moodTimer);
+      displayHint.innerText = '已暂停，回到主菜单';
+      modeOverlay.style.display = 'flex';
+      logEvent('你返回了主菜单，可以重新选择模式开始新的运行。', 'info');
+    });
+
+    if (priceUpBtn) priceUpBtn.addEventListener('click', () => {
+      career.ticketPrice = Math.min(10, career.ticketPrice + 0.5);
+      logEvent(`票价调整为 ${career.ticketPrice.toFixed(1)} 元`, 'info');
+      updateCareerUI();
+    });
+
+    if (priceDownBtn) priceDownBtn.addEventListener('click', () => {
+      career.ticketPrice = Math.max(0, career.ticketPrice - 0.5);
+      logEvent(`票价调整为 ${career.ticketPrice.toFixed(1)} 元`, 'info');
+      updateCareerUI();
+    });
+
+    if (upgradeMaintBtn) upgradeMaintBtn.addEventListener('click', () => {
+      if (gameMode !== 'career') {
+        logEvent('当前为自由模式，维护升级只做演示效果。', 'warn');
+        career.maintenanceLevel = Math.min(5, career.maintenanceLevel + 1);
+        updateCareerUI();
+        return;
+      }
+      const cost = 1800 * career.maintenanceLevel;
+      if (career.money < cost) {
+        logEvent(`资金不足，升级维护需要 ${cost} 元。`, 'warn');
+        return;
+      }
+      career.money -= cost;
+      career.maintenanceLevel = Math.min(5, career.maintenanceLevel + 1);
+      logEvent(`你花费 ${cost} 元，将维护等级提升到 Lv.${career.maintenanceLevel}。`, 'info');
+      updateCareerUI();
+    });
+
+    if (expandBuildingBtn) expandBuildingBtn.addEventListener('click', () => {
+      if (gameMode !== 'career') {
+        logEvent('自由模式可直接改楼栋数量与类型，这个按钮只给生涯用。', 'warn');
+        return;
+      }
+      const cost = getBuildingExpansionCost();
+      if (career.money < cost) {
+        logEvent(`扩建失败：需要 ${cost} 元。`, 'warn');
+        return;
+      }
+      career.money -= cost;
+
+      const label = String.fromCharCode(65 + settings.buildings.length) + '座';
+      const types = Object.keys(BUILDING_TYPES);
+      const type = types[Math.floor(Math.random()*types.length)];
+      settings.buildings.push({ label, type, elevatorCount: 1 });
+      career.buildingsExpanded += 1;
+      settings.currentBuilding = settings.buildings.length - 1;
+      saveSettings();
+      buildBuildingUI();
+
+      logEvent(`你花费 ${cost} 元扩建了 ${label}（类型：${BUILDING_TYPES[type].name}），并配了 1 台新电梯。`, 'info');
+      updateCareerUI();
+      initSystem();
+    });
+
+    if (expandElevatorBtn) expandElevatorBtn.addEventListener('click', () => {
+      if (gameMode !== 'career') { logEvent('自由模式请直接改设置。', 'warn'); return; }
+      const b = currentBuilding();
+      if (b.elevatorCount >= 4) { logEvent('当前楼栋电梯已达上限（4 台）。', 'warn'); return; }
+      const cost = getElevatorExpansionCost();
+      if (career.money < cost) { logEvent(`资金不足，购买新电梯需要 ${cost} 元。`, 'warn'); return; }
+      career.money -= cost;
+      b.elevatorCount += 1;
+      saveSettings();
+      logEvent(`你给 ${b.label} 购买了 1 台新电梯（花费 ${cost} 元）。现在 ${b.label} 共有 ${b.elevatorCount} 台。`, 'info');
+      updateCareerUI();
+      initSystem();
+    });
+
+    if (expandFloorsBtn) expandFloorsBtn.addEventListener('click', () => {
+      if (gameMode !== 'career') { logEvent('自由模式请直接改设置。', 'warn'); return; }
+      if (settings.floors >= 30) { logEvent('楼层已达上限（30 层）。', 'warn'); return; }
+      const cost = getFloorsExpansionCost();
+      if (career.money < cost) { logEvent(`资金不足，加楼层需要 ${cost} 元。`, 'warn'); return; }
+      career.money -= cost;
+      settings.floors += 2;
+      if (settings.floors > 30) settings.floors = 30;
+      saveSettings();
+      logEvent(`你扩建了楼层（花费 ${cost} 元）。现在总楼层 ${settings.floors}。`, 'info');
+      updateCareerUI();
+      initSystem();
+    });
+  }
+
+  function startGame(mode) {
+    gameMode = mode;
+    simulationRunning = true;
+    career = { ...CAREER_DEFAULT };
+    storyQueue = []; focusedStoryId = null; nextStoryId = 1;
+    lastFestivalDay = 0; lastOwnerGroupDay = 0; festival = null;
+
+    if (mode === 'career') {
+      settings.floors = 8;
+      settings.randomFaults = true;
+      settings.algo = 'ai';
+      settings.traffic = 5;
+      settings.buildings = [{ label:'A座', type:'residential', elevatorCount: 1 }];
+      settings.currentBuilding = 0;
+      saveSettings();
+    }
+
+    modeOverlay.style.display = 'none';
+    displayHint.innerText = mode === 'career'
+      ? '生涯模式：各楼栋独立运营，你只管经营。'
+      : '自由模式：随便玩，纯体验（设置全开 + 工具箱）。';
+
+    logEvent(mode === 'career'
+      ? '生涯模式开始：从 A座 1 台电梯起家。你不能手动按按钮。'
+      : '自由模式开始，尽情折腾这些电梯吧。', 'info');
+
+    updateSettingsLock();
+    initSystem();
+    updateCareerUI();
+    renderTechUI();
+    renderStoryUI();
+  }
+
+  function dailySettlement() {
+    if (gameMode !== 'career') {
+      career.day += 1;
+    } else {
+      const totalElev = settings.buildings.reduce((s,b)=>s+b.elevatorCount,0);
+
+      const policyCost =
+        (career.policies.crowdGuide ? 300 : 0) +
+        (career.policies.securityPatrol ? 450 : 0);
+
+      const baseCost = 250 + totalElev * 120 + career.maintenanceLevel * 150 + career.complaints * 40 + settings.buildings.length * 180;
+      career.money -= (baseCost + policyCost);
+
+      let repBonus = 0;
+      if (career.reputation >= 85) repBonus = 400;
+      else if (career.reputation >= 65) repBonus = 150;
+      else if (career.reputation <= 30) repBonus = -250;
+      career.money += repBonus;
+
+      if (career.voteDaysLeft != null) {
+        career.voteDaysLeft -= 1;
+        if (career.voteDaysLeft <= 0) {
+          if (career.reputation < 55 || career.strikes >= 2) {
+            checkGameOver('业主投票通过，你被解雇。');
+          } else {
+            logEvent('投票未通过，你侥幸续命，但业主仍在盯着你。','warn');
+            career.voteDaysLeft = null;
+          }
+        }
+      }
+
+      logEvent(
+        `第 ${career.day} 天结算：运送 ${career.servedToday} 人，成本 ${baseCost} 元 + 政策 ${policyCost} 元，口碑修正 ${repBonus>=0?'+':''}${repBonus} 元。`,
+        repBonus >= 0 ? 'info' : 'warn'
+      );
+
+      career.day += 1;
+      career.servedToday = 0;
+      career.stats.fansServedToday = 0;
+      career.complaints = 0;
+
+      // Buff 过期检查
+      if (career.buffs.photoContestUntilDay < career.day) {
+        career.buffs.repGainMult = 1;
+        career.buffs.fanSpawnMult = 1;
+        career.buffs.tipMult = 1;
+      }
+
+      checkGameOver();
+    }
+
+    career.timeMinutes = 8 * 60;
+    updateCareerUI();
+    renderTechUI();
+  }
+
+  function checkGameOver(reason) {
+    if (gameMode !== 'career') return;
+    if (!simulationRunning) return;
+
+    let finalReason = reason;
+    if (career.money < -2500) {
+      finalReason = finalReason || '资金长期亏损，物业宣布破产。';
+    } else if (career.reputation <= 5) {
+      finalReason = finalReason || '口碑彻底崩盘，业委会当场开除你。';
+    } else {
+      return;
+    }
+
+    simulationRunning = false;
+    if (spawnTimer) clearInterval(spawnTimer);
+    if (moodTimer) clearInterval(moodTimer);
+
+    gameOverReason.textContent = finalReason;
+    gameOverDay.textContent = career.day;
+    gameOverMoney.textContent = Math.round(career.money);
+    gameOverRep.textContent = Math.round(career.reputation);
+    gameOverOverlay.style.display = 'flex';
+
+    logEvent(`生涯结束：${finalReason}`, 'error');
+  }
+
+  function updateCareerUI() {
+    if (!careerModeText) return;
+
+    if (!gameMode) {
+      careerModeText.textContent = '未开始';
+      careerModeSubText.textContent = '请在上方选择模式';
+    } else if (gameMode === 'career') {
+      careerModeText.textContent = '生涯模式';
+      let buffHint = '';
+      if (career.buffs.photoContestUntilDay >= career.day) {
+        buffHint = `｜📸 摄影大赛热度中+（剩 ${career.buffs.photoContestUntilDay - career.day + 1} 天）`;
+      }
+      careerModeSubText.textContent = `起家第 ${career.day} 天｜不能手动按按钮${buffHint}`;
+    } else {
+      careerModeText.textContent = '自由模式';
+      careerModeSubText.textContent = '设置全开｜不结算输赢';
+    }
+
+    careerDay.textContent = career.day;
+    careerTime.textContent = formatTime(career.timeMinutes);
+    careerMoney.textContent = Math.round(career.money);
+    careerReputation.textContent = Math.round(career.reputation);
+    careerPrice.textContent = career.ticketPrice.toFixed(1).replace(/\.0$/, '');
+    careerMaintenance.textContent = career.maintenanceLevel;
+    careerComplaints.textContent = career.complaints;
+    careerStrikesEl.textContent = career.strikes;
+    careerVoteDaysEl.textContent = (career.voteDaysLeft==null) ? '-' : `${career.voteDaysLeft} 天`;
+
+    let face = '😐';
+    if (career.reputation >= 80) face = '😄';
+    else if (career.reputation <= 30) face = '😡';
+    careerReputationFace.textContent = face;
+    careerReputationBar.style.width = clamp(career.reputation, 0, 100) + '%';
+
+    const careerOnly = gameMode === 'career';
+    expandBuildingBtn.disabled = !careerOnly;
+    expandElevatorBtn.disabled = !careerOnly;
+    expandFloorsBtn.disabled = !careerOnly;
+    [expandBuildingBtn, expandElevatorBtn, expandFloorsBtn].forEach(b=>{
+      b.style.opacity = b.disabled ? 0.4 : 1;
+    });
+
+    expandBuildingCostText.textContent = careerOnly ? `今日价格：${getBuildingExpansionCost()} 元` : '';
+    expandElevatorCostText.textContent = careerOnly ? `当前价格：${getElevatorExpansionCost()} 元` : '';
+    expandFloorsCostText.textContent   = careerOnly ? `当前价格：${getFloorsExpansionCost()} 元` : '';
+
+    if (btnToggleGuide){
+      btnToggleGuide.textContent = career.policies.crowdGuide ? '开启' : '关闭';
+      btnToggleGuide.classList.toggle('on', career.policies.crowdGuide);
+      btnToggleGuide.classList.toggle('disabled', !careerOnly);
+    }
+    if (btnToggleSecurity){
+      btnToggleSecurity.textContent = career.policies.securityPatrol ? '开启' : '关闭';
+      btnToggleSecurity.classList.toggle('on', career.policies.securityPatrol);
+      btnToggleSecurity.classList.toggle('disabled', !careerOnly);
+    }
+    if (policyGuideCostEl) policyGuideCostEl.textContent = 300;
+    if (policySecurityCostEl) policySecurityCostEl.textContent = 450;
+
+    if (freeToolsEl){
+      freeToolsEl.style.display = (gameMode==='free') ? 'flex' : 'none';
+    }
+  }
+
+  function initButtons() {
+    document.getElementById('btnOpenDoor').addEventListener('click', () => { ensureAudio(); cabinOpenDoor(); });
+    document.getElementById('btnCloseDoor').addEventListener('click', () => { ensureAudio(); cabinCloseDoor(); });
+    document.getElementById('btnAlarm').addEventListener('click', () => {
+      ensureAudio();
+      playAlarm();
+      adTextEl.innerHTML = "<span style='color:red'>警告：<br>警铃已触发，调度已接警</span>";
+      adForceUntil = Date.now() + 6000;
+      logEvent("乘客按下轿厢警铃", 'warn');
+      maybeGlobalSay("谁啊按警铃！", 0.25);
+
+      if (gameMode === 'career') {
+        career.reputation = Math.max(0, career.reputation - 2);
+        career.complaints += 1;
+        updateCareerUI();
+      }
+    });
+  }
+
+  function initSettingsUI() {
+    setFloors.value = settings.floors;
+    setAlgo.value = settings.algo;
+    setTraffic.value = settings.traffic;
+    setFaults.checked = settings.randomFaults;
+    setElevators.value = currentBuilding().elevatorCount;
+
+    setFloors.addEventListener('change', () => {
+      if (gameMode === 'career') return;
+      settings.floors = clamp(parseInt(setFloors.value, 10) || SETTINGS_DEFAULT.floors, 3, 30);
+      setFloors.value = settings.floors;
+      saveSettings();
+      if (simulationRunning) initSystem();
+    });
+
+    setElevators.addEventListener('change', () => {
+      if (gameMode === 'career') return;
+      const b = currentBuilding();
+      b.elevatorCount = clamp(parseInt(setElevators.value, 10) || 1, 1, 4);
+      setElevators.value = b.elevatorCount;
+      saveSettings();
+      if (simulationRunning) initSystem();
+    });
+
+    setAlgo.addEventListener('change', () => {
+      if (gameMode === 'career') return;
+      settings.algo = setAlgo.value;
+      saveSettings();
+      updateStatusLog();
+    });
+
+    setTraffic.addEventListener('input', () => {
+      if (gameMode === 'career') return;
+      settings.traffic = clamp(parseInt(setTraffic.value, 10) || 5, 1, 10);
+      saveSettings();
+      if (simulationRunning) restartSpawnTimer();
+    });
+
+    setFaults.addEventListener('change', () => {
+      if (gameMode === 'career') return;
+      settings.randomFaults = !!setFaults.checked;
+      saveSettings();
+    });
+  }
+
+  function updateSettingsLock(){
+    const locked = gameMode === 'career';
+    setFloors.disabled = locked;
+    setElevators.disabled = locked;
+    setFaults.disabled = locked;
+    setAlgo.disabled = locked;
+    setTraffic.disabled = locked;
+    settingsBox.classList.toggle('lock-all', locked);
+
+    settingsLockHint.textContent = locked
+      ? '生涯模式：设置全锁，只能靠扩建/科技/维护推进'
+      : '自由模式：设置全开 + 工具箱';
+  }
+
+  function initSystem() {
+    elevators.forEach(e => {
+      clearInterval(e.moveTimer);
+      clearTimeout(e.doorTimer);
+      clearTimeout(e.autoCloseTimer);
+    });
+    if (spawnTimer) clearInterval(spawnTimer);
+    if (moodTimer) clearInterval(moodTimer);
+
+    elevators = [];
+    hallCalls = [];
+    passengers = [];
+    lastFightAtFloor = {};
+    lastCabinConflictAt = {};
+    nextPassengerId = 1;
+    nextCallId = 1;
+    movingCount = 0;
+
+    let eid = 0;
+    settings.buildings.forEach((b, bidx)=>{
+      const models = getAvailableModelsForBuilding(b.type);
+      for (let i = 0; i < b.elevatorCount; i++) {
+        const model = pickModelForBuilding(models, b.type);
+        elevators.push({
+          id: eid++,
+          building: bidx,
+          modelKey: model.key,
+          name: `${b.label}·E${i+1}｜${model.name}`,
+          capacity: model.capacity + career.tech.comfort * 1,
+          maxLoadKg: model.loadKg,
+          speedPerFloor: Math.max(0.6, model.speedPerFloor - career.tech.dispatch * 0.05),
+          doorTime: Math.max(1.1, model.doorTime - career.tech.dispatch * 0.05),
+          hospitalPriority: !!model.hospitalPriority,
+          currentFloor: 1,
+          state: 'IDLE',
+          direction: 0,
+          doorOpen: true,
+          stops: [],
+          people: [],
+          moveTimer: null,
+          doorTimer: null,
+          autoCloseTimer: null,
+          fault: null
+        });
+      }
+    });
+
+    const curE = elevators.filter(e=>e.building===settings.currentBuilding);
+    activeElevatorIndex = curE.length ? curE[0].id : 0;
+
+    buildFloors();
+    buildCabinButtons();
+    buildGroupTabs();
+    buildElevatorCards();
+
+    if (simulationRunning) {
+      restartSpawnTimer();
+      moodTimer = setInterval(simTick, 1000);
+    }
+
+    syncActiveUI();
+    updateHeatmap();
+    updateStatusLog();
+
+    const b = currentBuilding();
+    logEvent(`系统初始化：${settings.floors} 层｜${settings.buildings.length} 栋（当前：${b.label}·${BUILDING_TYPES[b.type].name}）`, 'info');
+
+    applyCareerButtonLock();
+    renderTechUI();
+  }
+
+  function buildFloors() {
+    floorPanel.innerHTML = '<div class="floor-panel-title">楼层呼梯 / 拥堵</div>';
+    for (let f = settings.floors; f >= 1; f--) {
+      const row = document.createElement('div');
+      row.className = 'floor-row';
+      row.dataset.floor = f;
+
+      const label = document.createElement('div');
+      label.className = 'floor-label';
+      label.textContent = f;
+
+      const btnUp = document.createElement('div');
+      btnUp.className = 'hall-btn up';
+      btnUp.textContent = '↑';
+      if (f === settings.floors) btnUp.classList.add('disabled');
+      else btnUp.addEventListener('click', () => hallCall(f, 'up'));
+
+      const btnDown = document.createElement('div');
+      btnDown.className = 'hall-btn down';
+      btnDown.textContent = '↓';
+      if (f === 1) btnDown.classList.add('disabled');
+      else btnDown.addEventListener('click', () => hallCall(f, 'down'));
+
+      const heatbar = document.createElement('div');
+      heatbar.className = 'heatbar';
+      const inner = document.createElement('div');
+      inner.className = 'heatbar-inner';
+      inner.id = `heat-${f}`;
+      heatbar.appendChild(inner);
+
+      const mood = document.createElement('div');
+      mood.className = 'mood-icon';
+      mood.id = `mood-${f}`;
+
+      row.appendChild(label);
+      row.appendChild(btnUp);
+      row.appendChild(btnDown);
+      row.appendChild(heatbar);
+      row.appendChild(mood);
+      floorPanel.appendChild(row);
+    }
+  }
+
+  function buildCabinButtons() {
+    btnContainer.innerHTML = '';
+    for (let f = 1; f <= settings.floors; f++) {
+      const btn = document.createElement('div');
+      btn.className = 'elevator-btn';
+      btn.innerText = f;
+      btn.id = `cab-btn-${f}`;
+      btn.addEventListener('click', () => cabinPressFloor(f));
+      btnContainer.appendChild(btn);
+      if (f === 1) btn.style.gridColumn = '1 / span 2';
+    }
+  }
+
+  function applyCareerButtonLock(){
+    const lock = gameMode === 'career';
+    for (let f=1; f<=settings.floors; f++){
+      const b = document.getElementById(`cab-btn-${f}`);
+      if (b) b.classList.toggle('disabled-btn', lock);
+    }
+    document.querySelectorAll('.hall-btn.up, .hall-btn.down').forEach(btn=>{
+      btn.classList.toggle('disabled-btn', lock);
+    });
+  }
+
+  function buildGroupTabs() {
+    groupTabs.innerHTML = '';
+    const curEs = elevators.filter(e=>e.building===settings.currentBuilding);
+    curEs.forEach((e) => {
+      const tab = document.createElement('div');
+      tab.className = 'elevator-tab';
+      tab.textContent = `E${e.name.split('·E')[1].split('｜')[0]}`;
+      if (e.id === activeElevatorIndex) tab.classList.add('active');
+      tab.title = e.name;
+      tab.addEventListener('click', () => {
+        activeElevatorIndex = e.id;
+        syncActiveUI();
+        updateElevatorCards();
+      });
+      groupTabs.appendChild(tab);
+    });
+  }
+
+  function buildElevatorCards() {
+    elevatorList.innerHTML = '';
+    const curEs = elevators.filter(e=>e.building===settings.currentBuilding);
+    curEs.forEach(e => {
+      const card = document.createElement('div');
+      card.className = 'elevator-card';
+      card.dataset.id = e.id;
+
+      const title = document.createElement('div');
+      title.className = 'elevator-card-title';
+      title.textContent = e.name;
+
+      const body = document.createElement('div');
+      body.className = 'elevator-card-body';
+      const left = document.createElement('div');
+      left.textContent = `F${e.currentFloor} ${stateToLabel(e.state)}`;
+      const right = document.createElement('div');
+      right.textContent = `载客 ${e.people.length}/${e.capacity}`;
+      body.appendChild(left); body.appendChild(right);
+
+      card.appendChild(title); card.appendChild(body);
+
+      card.addEventListener('click', () => {
+        activeElevatorIndex = e.id;
+        syncActiveUI();
+        updateElevatorCards();
+      });
+
+      card.addEventListener('dblclick', () => {
+        const elevator = elevators.find(x=>x.id===e.id);
+        if (elevator && elevator.fault) clearFault(elevator);
+      });
+
+      elevatorList.appendChild(card);
+    });
+    updateElevatorCards();
+  }
+
+  function updateElevatorCards() {
+    const cards = elevatorList.querySelectorAll('.elevator-card');
+    cards.forEach(card => {
+      const id = parseInt(card.dataset.id, 10);
+      const e = elevators.find(x=>x.id===id);
+      if (!e) return;
+      const body = card.querySelector('.elevator-card-body');
+      const [left, right] = body.children;
+      left.textContent = `F${e.currentFloor} ${stateToLabel(e.state)}`;
+      right.textContent = `载客 ${e.people.length}/${e.capacity}`;
+      card.classList.toggle('active', id === activeElevatorIndex);
+    });
+  }
+
+  function syncActiveUI() {
+    const e = elevators.find(x=>x.id===activeElevatorIndex);
+    if (!e) return;
+
+    floorDisplay.innerText = e.currentFloor;
+    floorDisplay.classList.add('active');
+    arrowUp.classList.toggle('active', e.state === 'MOVING_UP');
+    arrowDown.classList.toggle('active', e.state === 'MOVING_DOWN');
+    doors.classList.toggle('open', e.doorOpen);
+
+    activeElevatorLabel.innerText = e.name;
+    activeElevatorLoad.innerText = e.people.length;
+    activeElevatorCap.innerText = e.capacity;
+    plateLoad.innerText = e.maxLoadKg;
+    platePerson.innerText = e.capacity;
+
+    displayState.innerText = e.state;
+
+    for (let f = 1; f <= settings.floors; f++) {
+      const btn = document.getElementById(`cab-btn-${f}`);
+      if (!btn) continue;
+      const pressed =
+        e.stops.includes(f) ||
+        e.people.some(pid => {
+          const p = passengers.find(pp => pp.id === pid);
+          return p && p.to === f;
+        });
+      btn.classList.toggle('pressed', pressed);
+    }
+
+    let mood = 100;
+    const onboard = e.people.map(pid => passengers.find(pp => pp.id === pid)).filter(Boolean);
+    if (onboard.length) mood = onboard.reduce((s, p) => s + p.mood, 0) / onboard.length;
+    activeElevatorMood.innerText = mood >= 70 ? '😄' : mood >= 40 ? '😐' : '😡';
+
+    buildGroupTabs();
+  }
+
+  function syncActiveIf(e) {
+    if (activeElevatorIndex === e.id) syncActiveUI();
+    updateElevatorCards();
+    updateStatusLog();
+  }
+
+  function cabinOpenDoor() { const e = elevators.find(x=>x.id===activeElevatorIndex); if (e) openDoor(e); }
+  function cabinCloseDoor() { const e = elevators.find(x=>x.id===activeElevatorIndex); if (e) closeDoor(e, true); }
+
+  function cabinPressFloor(floor) {
+    if (gameMode === 'career') {
+      logEvent('生涯模式：你不能手动按轿厢按钮。', 'warn');
+      return;
+    }
+    const e = elevators.find(x=>x.id===activeElevatorIndex);
+    if (!e) return;
+    if (floor === e.currentFloor && e.doorOpen) return;
+    addStop(e, floor, 'internal');
+    syncActiveUI();
+  }
+
+  function hallCall(floor, dir, passenger) {
+    if (gameMode === 'career' && !passenger) {
+      logEvent('生涯模式：你不能手动呼梯，AI 全权调度。', 'warn');
+      return;
+    }
+    const bidx = passenger ? passenger.building : settings.currentBuilding;
+
+    let call = hallCalls.find(c => c.building===bidx && c.floor === floor && c.dir === dir && !c.served);
+    if (!call) {
+      call = { id: nextCallId++, building:bidx, floor, dir, assigned: null, served: false, passengerIds: [] };
+      hallCalls.push(call);
+    }
+    if (passenger) call.passengerIds.push(passenger.id);
+
+    if (bidx===settings.currentBuilding) {
+      const btn = document.querySelector(`.floor-row[data-floor="${floor}"] .hall-btn.${dir}`);
+      if (btn) btn.classList.add('active');
+    }
+
+    assignCall(call);
+  }
+
+  function assignCall(call) {
+    if (call.assigned != null) return;
+
+    const candidates = elevators.filter(e => e.building===call.building && !e.fault);
+    if (!candidates.length) return;
+
+    let chosen = null;
+    if (settings.algo === 'random') {
+      chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    } else {
+      let bestScore = Infinity;
+      const dirSign = call.dir === 'up' ? 1 : -1;
+      candidates.forEach(e => {
+        let score = Math.abs(e.currentFloor - call.floor);
+        if (e.state === 'IDLE') score -= 1;
+        if (e.state === 'MOVING_UP' || e.state === 'MOVING_DOWN') {
+          if (e.direction !== dirSign) score += 4;
+          if (e.direction === dirSign) {
+            if (dirSign === 1 && call.floor < e.currentFloor) score += 2;
+            if (dirSign === -1 && call.floor > e.currentFloor) score += 2;
+          }
+        }
+        const loadRatio = e.people.length / e.capacity;
+        score += loadRatio * 3;
+
+        if (career.tech.dispatch >= 2) score -= 0.3;
+
+        const b = settings.buildings[e.building];
+        if (b && b.type==='hospital' && e.hospitalPriority) {
+          if (call.floor<=3) score -= 3.5;
+          if (call.dir==='down') score -= 1.5;
+        }
+
+        if (score < bestScore) { bestScore = score; chosen = e; }
+      });
+    }
+    if (!chosen) return;
+    call.assigned = chosen.id;
+    addStop(chosen, call.floor, 'hall');
+    logEvent(`AI 抢梯：${chosen.name} 处理 ${call.floor}F ${call.dir === 'up' ? '↑' : '↓'} 呼叫`, 'info');
+  }
+
+  function addStop(e, floor) {
+    if (floor < 1 || floor > settings.floors) return;
+    if (e.stops.includes(floor)) return;
+    if (floor === e.currentFloor && e.doorOpen) return;
+    e.stops.push(floor);
+    startElevatorIfIdle(e);
+    syncActiveIf(e);
+  }
+
+  function startElevatorIfIdle(e) {
+    if (e.fault) return;
+    if (e.stops.length === 0) return;
+    if (e.state === 'IDLE') {
+      if (e.doorOpen) closeDoor(e, true);
+      else startMovement(e);
+    }
+  }
+
+  function closeDoor(e, shouldMove) {
+    clearTimeout(e.doorTimer);
+    clearTimeout(e.autoCloseTimer);
+    if (e.doorOpen) {
+      e.state = 'DOOR_CLOSING';
+      syncActiveIf(e);
+      e.doorTimer = setTimeout(() => {
+        e.doorOpen = false;
+        e.state = 'IDLE';
+        syncActiveIf(e);
+        if (shouldMove) startMovement(e);
+      }, e.doorTime * 1000);
+    } else {
+      if (shouldMove) startMovement(e);
+    }
+  }
+
+  function openDoor(e, onOpened) {
+    clearTimeout(e.doorTimer);
+    clearTimeout(e.autoCloseTimer);
+    e.state = 'DOOR_OPENING';
+    syncActiveIf(e);
+
+    e.doorTimer = setTimeout(() => {
+      e.doorOpen = true;
+      e.state = 'DOOR_OPEN';
+      syncActiveIf(e);
+      if (typeof onOpened === 'function') onOpened();
+      e.autoCloseTimer = setTimeout(() => {
+        if (e.state === 'DOOR_OPEN' && !e.fault) closeDoor(e, true);
+      }, 3000);
+    }, e.doorTime * 1000);
+  }
+
+  function startMovement(e) {
+    if (e.stops.length === 0 || e.fault) return;
+
+    let target = null;
+    let bestDist = Infinity;
+    e.stops.forEach(f => {
+      const d = Math.abs(f - e.currentFloor);
+      if (d < bestDist) { bestDist = d; target = f; }
+    });
+    if (target == null) { e.state = 'IDLE'; syncActiveIf(e); return; }
+    if (target === e.currentFloor) { arriveAtFloor(e); return; }
+
+    e.direction = target > e.currentFloor ? 1 : -1;
+    e.state = e.direction === 1 ? 'MOVING_UP' : 'MOVING_DOWN';
+
+    if (!e.moveTimer) { movingCount++; updateMotorSound(); }
+
+    e.moveTimer = setInterval(() => {
+      if (settings.randomFaults) {
+        let faultProb = 0.009 - career.maintenanceLevel * 0.0015 - career.tech.reliability * 0.0015;
+        faultProb = clamp(faultProb, 0.0015, 0.012);
+        if (Math.random() < faultProb) { triggerFault(e, 'RANDOM_STOP'); return; }
+      }
+
+      e.currentFloor += e.direction;
+      e.currentFloor = clamp(e.currentFloor, 1, settings.floors);
+
+      const interior = document.querySelector('.interior-back');
+      interior.style.transform = `translateY(${e.direction * 5}px)`;
+      setTimeout(() => interior.style.transform = 'translateY(0)', 100);
+
+      syncActiveIf(e);
+
+      if (e.stops.includes(e.currentFloor)) stopAtCurrentFloor(e);
+    }, e.speedPerFloor * 1000);
+
+    if (settings.randomFaults) shaft.classList.add('shaking');
+    syncActiveIf(e);
+  }
+
+  function stopAtCurrentFloor(e) {
+    clearInterval(e.moveTimer);
+    e.moveTimer = null;
+    movingCount = Math.max(0, movingCount - 1);
+    updateMotorSound();
+    shaft.classList.remove('shaking');
+
+    e.state = 'IDLE';
+    e.stops = e.stops.filter(f => f !== e.currentFloor);
+    arriveAtFloor(e);
+  }
+
+  function arriveAtFloor(e) {
+    const floor = e.currentFloor;
+    ensureAudio(); playDing();
+
+    hallCalls.forEach(call => {
+      if (!call.served && call.building===e.building && call.floor === floor && call.assigned === e.id) {
+        call.served = true;
+        if (call.building===settings.currentBuilding) {
+          const btn = document.querySelector(`.floor-row[data-floor="${floor}"] .hall-btn.${call.dir}`);
+          if (btn) btn.classList.remove('active');
+        }
+      }
+    });
+
+    handleDisembark(e, floor);
+    openDoor(e, () => {
+      handleBoarding(e, floor);
+      const btn = document.getElementById(`cab-btn-${floor}`);
+      if (btn) btn.classList.remove('pressed');
+    });
+  }
+
+  function handleDisembark(e, floor) {
+    const leavingIds = e.people.filter(pid => {
+      const p = passengers.find(pp => pp.id === pid);
+      return p && p.to === floor;
+    });
+
+    if (leavingIds.length) {
+      leavingIds.forEach(pid => {
+        const p = passengers.find(pp => pp.id === pid);
+        if (p) {
+          p.state = 'done';
+          p.inElevator = null;
+
+          if (gameMode === 'career') {
+            let repDelta = 0;
+            if (p.mood >= 70) repDelta = (p.trait==='enthusiast'?2:1);
+            else if (p.mood <= 30) repDelta = -2;
+
+            // 摄影大赛 Buff：口碑收益增强
+            repDelta *= career.buffs.repGainMult;
+
+            career.reputation = clamp(career.reputation + repDelta, 0, 100);
+            if (repDelta < 0) career.complaints += 1;
+
+            let price = career.ticketPrice;
+            if (festival && career.day<=festival.endsAtDay) price *= festival.priceMult;
+
+            // 爱好者小费：Buff 提升小费概率和幅度
+            if (p.trait==='enthusiast' && p.mood>=80 && Math.random()<0.35*career.buffs.tipMult){
+              price += 1;
+              logEvent(`P${p.id}（爱好者）开心打赏 +1 元`, 'info');
+            }
+            career.money += price;
+            career.servedToday += 1;
+
+            if (p.trait==='enthusiast') {
+              career.stats.fansServed += 1;
+              career.stats.fansServedToday += 1;
+              maybeTriggerPhotoContest(p);
+            }
+          }
+
+          p.mood = Math.min(100, p.mood + 10);
+          maybeSay(p, 'leave');
+
+          if (p.trait==='enthusiast' && Math.random()<0.28){
+            const from = floor;
+            let to = randomInt(1, settings.floors);
+            if (to===from) to = from===settings.floors?from-1:from+1;
+            const np = makePassenger(from,to,p.building,'enthusiast');
+            np.mood = clamp(p.mood + 10, 50, 100);
+            passengers.push(np);
+            hallCall(from, to>from?'up':'down', np);
+            if (p.building===settings.currentBuilding){
+              logEvent(`电梯爱好者 P${p.id} 说：再坐一趟！ (生成 P${np.id})`, 'say');
+            }
+          }
+        }
+      });
+      e.people = e.people.filter(pid => !leavingIds.includes(pid));
+      logEvent(`${e.name} 在 ${floor}F 下客 ${leavingIds.length} 人`, 'info');
+      updateCareerUI();
+    }
+  }
+
+  function handleBoarding(e, floor) {
+    const waiting = passengers.filter(p => p.state === 'waiting' && p.from === floor && p.building===e.building);
+    if (!waiting.length) return;
+
+    waiting.sort((a, b) => b.waitTime - a.waitTime);
+
+    let boarded = [];
+    for (const p of waiting) {
+      if (e.people.length >= e.capacity) break;
+      p.state = 'onboard';
+      p.inElevator = e.id;
+
+      // 梯毁上车会“继续伪装”，直到露馅
+      // 若已经露馅则不变
+      if (p.trait==='saboteur' && p.disguised) {
+        if (Math.random()<0.15) revealSaboteur(p, 'board_reveal');
+      }
+
+      e.people.push(p.id);
+      addStop(e, p.to);
+      boarded.push(p);
+      maybeSay(p, 'board');
+
+      if (p.trait==='enthusiast' && Math.random()<0.5){
+        maybeSay(p,'fan_photo');
+        if (gameMode==='career'){
+          career.reputation = clamp(career.reputation + 1*career.buffs.repGainMult,0,100);
+        }
+      }
+    }
+
+    if (boarded.length) logEvent(`${e.name} 在 ${floor}F 上客 ${boarded.length} 人`, 'info');
+
+    const stillWaiting = passengers.some(p => p.state === 'waiting' && p.from === floor && p.building===e.building);
+    ['up', 'down'].forEach(dir => {
+      if (e.building===settings.currentBuilding) {
+        const btn = document.querySelector(`.floor-row[data-floor="${floor}"] .hall-btn.${dir}`);
+        if (btn && !stillWaiting) btn.classList.remove('active');
+      }
+    });
+
+    updateHeatmap();
+    syncActiveIf(e);
+  }
+
+  function restartSpawnTimer() {
+    if (spawnTimer) clearInterval(spawnTimer);
+
+    const base = 12000, min = 2000;
+    const span = base - min;
+    const level = settings.traffic;
+    let t = base - ((level - 1) * (span / 9));
+
+    if (festival && career.day<=festival.endsAtDay) t *= festival.trafficMult;
+
+    spawnTimer = setInterval(spawnRandomPassenger, t);
+  }
+
+  function makePassenger(from,to,bidx,trait){
+    const personality = randomInt(1, 3);
+    const impatientBoost = (BUILDING_TYPES[settings.buildings[bidx].type].patienceBias || 1);
+
+    let moodBase = randomInt(65, 100);
+    if (trait==='enthusiast') moodBase = randomInt(80, 100);
+    if (trait==='saboteur') moodBase = randomInt(45, 80);
+
+    return {
+      id: nextPassengerId++,
+      from,
+      to,
+      state: 'waiting',
+      waitTime: 0,
+      mood: moodBase,
+      personality: clamp(personality * impatientBoost, 1, 3),
+      inElevator: null,
+      building: bidx,
+      trait: trait || 'normal',
+      didSabotage: false,
+      disguised: trait==='saboteur' ? true : false,  // ✅ 梯毁伪装
+      revealedAt: null
+    };
+  }
+
+  function spawnRandomPassenger() {
+    if (!simulationRunning) return;
+
+    const bidx = randomInt(0, settings.buildings.length-1);
+    const b = settings.buildings[bidx];
+    const bias = BUILDING_TYPES[b.type];
+
+    let from, to;
+    if (bias.trafficBias === 'commute') {
+      from = randomInt(1, Math.min(3, settings.floors));
+      to = randomInt(Math.ceil(settings.floors*0.6), settings.floors);
+    } else if (bias.trafficBias === 'mid') {
+      from = randomInt(Math.floor(settings.floors*0.3), Math.floor(settings.floors*0.7));
+      to = randomInt(1, settings.floors);
+    } else {
+      from = randomInt(1, settings.floors);
+      to = randomInt(1, settings.floors);
+    }
+    if (to === from) to = from === settings.floors ? from - 1 : from + 1;
+
+    let trait = 'normal';
+    const r = Math.random();
+
+    // 摄影大赛 Buff：爱好者更容易出现
+    const fanProb = 0.08 * career.buffs.fanSpawnMult; // 默认 8%，buff 时更高
+    if (r < fanProb) trait = 'enthusiast';
+    else {
+      let sabProb = 0.03;
+      if (gameMode==='career' && career.policies.securityPatrol) sabProb *= 0.4;
+      if (r < fanProb + sabProb) trait = 'saboteur';
+    }
+
+    const p = makePassenger(from,to,bidx,trait);
+    passengers.push(p);
+    const dir = to > from ? 'up' : 'down';
+    hallCall(from, dir, p);
+
+    if (bidx===settings.currentBuilding) {
+      logEvent(`乘客 P${p.id}（${traitLabelVisible(p)}｜${b.label}）在 ${from}F 等待 → ${to}F`, 'info');
+      maybeSay(p, 'wait_start');
+      updateHeatmap();
+    }
+  }
+
+  function simTick() {
+    if (!simulationRunning) return;
+
+    career.timeMinutes += 5;
+    if (career.timeMinutes >= 24 * 60) dailySettlement();
+
+    passengers.forEach(p => {
+      if (p.state === 'waiting') {
+        p.waitTime += 1;
+        if (p.waitTime % 2 === 0) {
+          const personality = p.personality || 2;
+          let loss = 2 * personality;
+          loss -= career.tech.comfort * 0.3;
+          if (p.waitTime > 30) loss += 1;
+
+          if (gameMode==='career' && career.policies.crowdGuide) loss *= 0.7;
+
+          if (p.trait==='enthusiast') loss *= 0.5;
+          if (p.trait==='saboteur') loss *= 1.3;
+
+          p.mood = Math.max(0, p.mood - loss);
+
+          // 梯毁伪装下，情绪太低或排太久，有小概率露馅
+          if (p.trait==='saboteur' && p.disguised){
+            const revealProb = (p.mood<20?0.02:0.005) + (p.waitTime>25?0.01:0);
+            if (Math.random()<revealProb) revealSaboteur(p,'queue_reveal');
+          }
+
+          if (p.waitTime % 8 === 0) maybeSay(p, 'waiting_long');
+        }
+      } else if (p.state === 'onboard') {
+        p.waitTime += 1;
+        if (p.waitTime % 4 === 0) {
+          const personality = p.personality || 2;
+          let loss = 1 * personality;
+          const e = elevators.find(x=>x.id===p.inElevator);
+          if (e) {
+            const ratio = e.people.length / e.capacity;
+            if (ratio > 0.8) loss += 2;
+            else if (ratio > 0.6) loss += 1;
+          }
+          loss -= career.tech.comfort * 0.2;
+
+          if (p.trait==='enthusiast') loss *= -0.3;
+          if (p.trait==='saboteur') loss *= 1.2;
+
+          p.mood = clamp(p.mood - loss, 0, 100);
+          if (p.waitTime % 10 === 0) maybeSay(p, 'onboard');
+        }
+      }
+    });
+
+    // 梯毁破坏：轿厢内小概率人为故障
+    passengers.forEach(p=>{
+      if (p.state==='onboard' && p.trait==='saboteur' && !p.didSabotage){
+        let prob = 0.0025;
+        if (gameMode==='career' && career.policies.securityPatrol) prob *= 0.35;
+        if (Math.random()<prob){
+          const e = elevators.find(x=>x.id===p.inElevator);
+          if (e && !e.fault){
+            p.didSabotage = true;
+            revealSaboteur(p,'sabotage');
+            triggerFault(e,'SABOTAGE', p);
+          }
+        }
+      }
+    });
+
+    passengers.forEach(p => {
+      if (p.state === 'waiting' && p.waitTime > 40 && p.mood <= 10 && Math.random() < 0.4) {
+        p.state = 'gone';
+        if (p.building===settings.currentBuilding) {
+          logEvent(`乘客 P${p.id} 因等待过久愤然离开。`, 'warn');
+          maybeSay(p, 'leave_angry');
+        }
+        if (gameMode === 'career') {
+          career.reputation = Math.max(0, career.reputation - 3);
+          career.complaints += 1;
+        }
+      }
+    });
+
+    if (gameMode === 'career' && career.day % 5 === 0 && lastFestivalDay !== career.day && career.timeMinutes >= 12*60) {
+      lastFestivalDay = career.day;
+      triggerFestivalEventThemed();
+      restartSpawnTimer();
+    }
+
+    if (gameMode === 'career' && career.reputation <= 45 && lastOwnerGroupDay !== career.day && Math.random() < 0.015) {
+      lastOwnerGroupDay = career.day;
+      triggerOwnerGroupEvent();
+    }
+
+    const conflictMultGuide = (gameMode==='career' && career.policies.crowdGuide) ? 0.6 : 1;
+
+    for (let f = 1; f <= settings.floors; f++) {
+      settings.buildings.forEach((b, bidx)=>{
+        const waiting = passengers.filter(p => p.state === 'waiting' && p.from === f && p.building===bidx);
+        if (waiting.length >= 2) {
+          const angry = waiting.filter(p => p.mood <= 25);
+          if (angry.length >= 2 && Math.random() < (festival?festival.conflictMult:1)*0.25*conflictMultGuide) {
+            triggerFightEvent(f, bidx, waiting);
+          }
+        }
+      });
+    }
+
+    elevators.forEach(e => {
+      const ratio = e.people.length / e.capacity;
+      if (ratio >= 0.9 && e.people.length >= 3) {
+        const onboard = e.people.map(pid => passengers.find(pp => pp.id === pid)).filter(Boolean);
+        const angry = onboard.filter(p => p.mood <= 25);
+        const now = Date.now();
+        if (angry.length >= 2 && Math.random() < (festival?festival.conflictMult:1)*0.2*conflictMultGuide) {
+          if (lastCabinConflictAt[e.id] && now - lastCabinConflictAt[e.id] < 15000) return;
+          lastCabinConflictAt[e.id] = now;
+          triggerCabinConflictEvent(e, angry.slice(0,3));
+        }
+      }
+    });
+
+    updateHeatmap();
+    updateStatusLog();
+    updateCareerUI();
+    checkGameOver();
+  }
+
+  // ✅ 梯毁露馅
+  function revealSaboteur(p, reason){
+    if (!p || p.trait!=='saboteur' || !p.disguised) return;
+    p.disguised = false;
+    p.revealedAt = Date.now();
+
+    if (p.building===settings.currentBuilding){
+      logEvent(`⚠ P${p.id} 露出真面目：疑似“梯毁”！（${reason}）`, 'error');
+      maybeGlobalSay("那人有问题！快叫保安！",0.35);
+      adTextEl.innerHTML = `⚠ 警告<br>P${p.id} 被发现是梯毁`;
+      adForceUntil = Date.now() + 4500;
+    }
+  }
+
+  // ✅ 电梯摄影大赛 Buff 触发
+  function maybeTriggerPhotoContest(p){
+    if (gameMode!=='career') return;
+    if (career.buffs.photoContestUntilDay >= career.day) return; // 已在热度中
+    // 触发条件：当天爱好者服务 >=5，且该爱好者心情很高
+    if (career.stats.fansServedToday >= 5 && p.mood>=85 && Math.random()<0.25){
+      enqueueStory({
+        type:'photo_contest',
+        title:'📸 电梯摄影大赛 · 热度来袭',
+        desc:
+`电梯爱好者们组织了“电梯摄影大赛”，短视频平台疯狂转发。
+你现在可以选择“支持/合作/躺平”。
+
+若你支持并合作，未来几天口碑增长更快，爱好者也更爱来打卡。`,
+        options:[
+          { text:'🤝 官方合作+设置打卡点', effects:{ money:-800, rep:+6, complaints:-1 }, log:'你顺势联名，热度反哺口碑！', onResolve:()=>activatePhotoBuff(5,'high') },
+          { text:'👍 默认支持但不花钱', effects:{ money:0, rep:+2, complaints:0 }, log:'你口头支持，热度一般。', onResolve:()=>activatePhotoBuff(3,'mid') },
+          { text:'🙈 不理会热度', effects:{ money:0, rep:-3, complaints:+1 }, log:'你错过了好机会，还被吐槽。' }
+        ]
+      });
+    }
+  }
+
+  function activatePhotoBuff(days, level){
+    career.buffs.photoContestUntilDay = career.day + days - 1;
+    if (level==='high'){
+      career.buffs.repGainMult = 1.25;
+      career.buffs.fanSpawnMult = 1.6;
+      career.buffs.tipMult = 1.6;
+    } else if (level==='mid'){
+      career.buffs.repGainMult = 1.12;
+      career.buffs.fanSpawnMult = 1.25;
+      career.buffs.tipMult = 1.2;
+    }
+    logEvent(`摄影大赛 Buff 生效：持续 ${days} 天（口碑↑/爱好者↑/小费↑）`,'info');
+    updateCareerUI();
+  }
+
+  function triggerFestivalEventThemed(){
+    let theme = '社区节';
+    let trafficMult = 0.7, priceMult=1.2, conflictMult=1.1;
+
+    if (career.day % 15 === 0) theme = '年货节';
+    else if (career.day % 10 === 0) theme = '开学季';
+    else if (settings.buildings.some(b=>b.type==='hospital')) theme = '医院急诊潮';
+
+    if (theme==='年货节') { trafficMult=0.6; priceMult=1.4; conflictMult=1.25; }
+    if (theme==='开学季') { trafficMult=0.65; priceMult=1.25; conflictMult=1.15; }
+    if (theme==='医院急诊潮') { trafficMult=0.55; priceMult=1.1; conflictMult=1.35; }
+
+    festival = { theme, endsAtDay: career.day, trafficMult, priceMult, conflictMult };
+
+    const desc =
+`今天是【${theme}】！
+客流暴涨，电梯会更挤、更容易吵。
+你要怎么组织运营？`;
+
+    const options = theme==='年货节'
+      ? [
+          { text:'🎁 临时增派引导员', effects:{ money:-600, rep:+5, complaints:-2 }, log:'你请人维持秩序，乘梯体验明显变好。' },
+          { text:'💰 年货节涨价', effects:{ money:+1800, rep:-6, complaints:+2 }, log:'你趁节日涨价，钱多了但骂声也多。' },
+          { text:'😴 任其拥挤', effects:{ money:+500, rep:-4, complaints:+3 }, log:'你没管，高峰挤到炸。' }
+        ]
+      : theme==='开学季'
+      ? [
+          { text:'🧒 设“学生优先”提示', effects:{ money:-300, rep:+4, complaints:-1 }, log:'你做了学生优先提示，社会评价很好。' },
+          { text:'🚀 调度策略偏通勤', effects:{ money:-200, rep:+2, complaints:0 }, log:'你优化调度，效率提升。' },
+          { text:'🙈 不处理', effects:{ money:+350, rep:-3, complaints:+2 }, log:'你装没看见，家长群炸了。' }
+        ]
+      : theme==='医院急诊潮'
+      ? [
+          { text:'🚑 急诊楼层优先调度', effects:{ money:-500, rep:+6, complaints:-2 }, log:'你让急诊优先，医护点赞。' },
+          { text:'🛠️ 加大保养避免故障', effects:{ money:-900, rep:+5, complaints:-2 }, log:'你提前保养，今天几乎没坏梯。' },
+          { text:'😶 普通运营', effects:{ money:+400, rep:-5, complaints:+3 }, log:'你不优先急诊，投诉爆炸。' }
+        ]
+      : [
+          { text:'📢 广播错峰', effects:{ money:-300, rep:+3, complaints:-1 }, log:'你提前广播错峰，秩序较好。' },
+          { text:'💰 票价临时上调', effects:{ money:+1200, rep:-4, complaints:+1 }, log:'你趁热涨价，赚到了但口碑受损。' },
+          { text:'😴 正常运营不管', effects:{ money:+400, rep:-2, complaints:+2 }, log:'你没特别安排，高峰挤爆了。' }
+        ];
+
+    enqueueStory({
+      type:'festival',
+      title:`节日活动 · ${theme}`,
+      desc,
+      options
+    });
+
+    logEvent(`节日主题触发：${theme}（客流+拥挤+收益buff）`, 'warn');
+    maybeGlobalSay(`今天是${theme}啊！太挤了！`,0.25);
+  }
+
+  function triggerOwnerGroupEvent(){
+    career.strikes += 1;
+
+    if (career.strikes >= 2 || career.reputation <= 35) {
+      career.voteDaysLeft = 3;
+    }
+
+    const desc =
+`业主群开始刷屏：
+“电梯又慢又挤，还老坏！”
+“物业到底管不管？”
+
+当前追责次数：${career.strikes}
+${career.voteDaysLeft!=null ? `⚠ 解雇投票倒计时：${career.voteDaysLeft} 天` : '（暂未进入投票阶段）'}
+
+你必须回应。`;
+
+    enqueueStory({
+      type:'owners_group',
+      title:`业主群炸锅 · 第${career.strikes}次追责`,
+      desc,
+      options:[
+        { text:'🗣️ 公关道歉 + 承诺整改', effects:{ money:-500, rep:+6, complaints:-2 }, log:'你及时公关，群情缓和。', strikeDelta:-1, voteReset:true },
+        { text:'🛠️ 立刻砸钱升级维护', effects:{ money:-1400, rep:+8, complaints:-3 }, log:'你砸钱保稳定，口碑回升明显。', strikeDelta:-1, voteReset:true },
+        { text:'🙈 装死不回', effects:{ money:0, rep:-10, complaints:+4 }, log:'你选择沉默，群里彻底炸裂。', strikeDelta:+1, voteReset:false }
+      ]
+    });
+    logEvent('业主群炸锅事件触发。', 'error');
+    updateCareerUI();
+  }
+
+  function triggerFightEvent(floor, bidx, waitingList) {
+    const now = Date.now();
+    const key = `${bidx}-${floor}`;
+    if (lastFightAtFloor[key] && now - lastFightAtFloor[key] < 15000) return;
+    lastFightAtFloor[key] = now;
+
+    if (bidx===settings.currentBuilding){
+      adTextEl.innerHTML = `⚠ ${floor}F 乘客发生争执<br>${settings.buildings[bidx].label}`;
+      adForceUntil = Date.now() + 6000;
+      const moodIcon = document.getElementById(`mood-${floor}`);
+      if (moodIcon) moodIcon.textContent = '💥';
+      logEvent(`${settings.buildings[bidx].label} ${floor}F 乘客发生争执`, 'warn');
+    }
+
+    waitingList.forEach(p => { p.mood = Math.max(0, p.mood - 12); maybeSay(p,'fight'); });
+
+    enqueueStory({
+      type: 'conflict',
+      title: `${settings.buildings[bidx].label}·${floor}F 乘客冲突`,
+      desc: `等待区爆发争执，投诉已经在路上。\n你打算怎么处置？`,
+      options: [
+        { text:'📢 广播道歉并劝导', effects:{ money:-200, rep:+2, complaints:-1 }, log:'你广播道歉，冲突稍有缓和。' },
+        { text:'👮 叫保安介入', effects:{ money:-500, rep:+4, complaints:-2 }, log:'保安到场拉开双方，秩序恢复。' },
+        { text:'😶 装死不管', effects:{ money:0, rep:-6, complaints:+2 }, log:'你选择无视，投诉迅速升级。' }
+      ]
+    });
+  }
+
+  function triggerCabinConflictEvent(e, angryPassengers){
+    if (e.building===settings.currentBuilding){
+      adTextEl.innerHTML = `⚠ 轿厢内发生冲突<br>${e.name.split('｜')[0]} 过度拥挤`;
+      adForceUntil = Date.now() + 6000;
+      logEvent(`${e.name} 轿厢过挤引发乘客口角`, 'warn');
+    }
+    angryPassengers.forEach(p => { p.mood = Math.max(0, p.mood - 15); maybeSay(p,'fight'); });
+
+    enqueueStory({
+      type:'cabin_conflict',
+      title:`${e.name.split('｜')[0]} · 轿厢拥挤冲突`,
+      desc:`电梯内太挤，有乘客互相指责甚至要动手。\n你要立即处置吗？`,
+      options:[
+        { text:'📢 广播致歉+提醒分流', effects:{ money:-300, rep:+3, complaints:-1 }, log:'你用广播稳住情绪，并建议错峰。' },
+        { text:'🚨 紧急停梯并叫保安', effects:{ money:-800, rep:+6, complaints:-2 }, log:'你强制停梯处理，虽然花钱但效果好。' },
+        { text:'🙈 装死不管', effects:{ money:0, rep:-8, complaints:+3 }, log:'你放任冲突扩散，口碑暴跌。' }
+      ]
+    });
+  }
+
+  function enqueueStory(story){
+    const id = nextStoryId++;
+    storyQueue.push({ id, ...story, createdAt: Date.now() });
+    if (!focusedStoryId) focusedStoryId = id;
+    renderStoryUI();
+    maybeGlobalSay("有突发事件！去【剧情/事件】处理一下。", 0.2);
+  }
+
+  function renderStoryUI(){
+    storyQueueEl.innerHTML = '';
+    if (storyQueue.length === 0){
+      storyQueueEl.innerHTML = '<div style="color:#666;">（空）</div>';
+      storyCurrentEl.innerHTML = `
+        <div class="story-title">暂无事件</div>
+        <div class="story-desc">电梯里风平浪静。</div>
+        <div class="story-options"></div>
+        <div class="story-hint">提示：拥挤冲突、节日、业主群、梯毁、摄影大赛都会进入这里。</div>
+      `;
+      focusedStoryId = null;
+      return;
+    }
+
+    storyQueue.forEach(s=>{
+      const item = document.createElement('div');
+      item.className = 'queue-item' + (s.id === focusedStoryId ? ' active':'');
+      item.textContent = `#${s.id}  ${s.title}`;
+      item.addEventListener('click', ()=>{
+        focusedStoryId = s.id;
+        renderStoryUI();
+      });
+      storyQueueEl.appendChild(item);
+    });
+
+    const cur = storyQueue.find(s=>s.id===focusedStoryId) || storyQueue[0];
+    focusedStoryId = cur.id;
+
+    const optHtml = cur.options.map((op, idx)=>{
+      const eff = op.effects || {};
+      const effStr = [
+        eff.money ? `资金${eff.money>0?'+':''}${eff.money}` : null,
+        eff.rep ? `口碑${eff.rep>0?'+':''}${eff.rep}` : null,
+        eff.complaints ? `投诉${eff.complaints>0?'+':''}${eff.complaints}` : null
+      ].filter(Boolean).join(' / ');
+      return `<button class="story-btn" data-idx="${idx}">${op.text}${effStr?`<div style="font-size:11px;color:#aaa;margin-top:2px;">影响：${effStr}</div>`:''}</button>`;
+    }).join('');
+
+    storyCurrentEl.innerHTML = `
+      <div class="story-title">${cur.title}</div>
+      <div class="story-desc">${cur.desc}</div>
+      <div class="story-options">${optHtml}</div>
+      <div class="story-hint">事件会影响资金/口碑/投诉/追责/解雇倒计时/Buff。</div>
+    `;
+
+    storyCurrentEl.querySelectorAll('.story-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const idx = parseInt(btn.dataset.idx,10);
+        resolveStory(cur.id, idx);
+      });
+    });
+  }
+
+  function resolveStory(storyId, optionIdx){
+    const sIdx = storyQueue.findIndex(s=>s.id===storyId);
+    if (sIdx<0) return;
+    const story = storyQueue[sIdx];
+    const op = story.options[optionIdx];
+    if (!op) return;
+
+    applyEffects(op.effects);
+
+    if (story.type==='owners_group' && gameMode==='career') {
+      if (typeof op.strikeDelta==='number') career.strikes = Math.max(0, career.strikes + op.strikeDelta);
+      if (op.voteReset) career.voteDaysLeft = null;
+      updateCareerUI();
+    }
+
+    if (typeof op.onResolve === 'function') op.onResolve();
+
+    logEvent(`事件处置：${story.title} -> ${op.log}`, 'info');
+    maybeGlobalSay(op.log, 0.15);
+
+    storyQueue.splice(sIdx,1);
+    focusedStoryId = storyQueue[0]?.id || null;
+    renderStoryUI();
+    checkGameOver();
+  }
+
+  function applyEffects(eff={}){
+    if (gameMode === 'career'){
+      if (typeof eff.money === 'number') career.money += eff.money;
+      if (typeof eff.rep === 'number') career.reputation = clamp(career.reputation + eff.rep, 0, 100);
+      if (typeof eff.complaints === 'number') career.complaints = Math.max(0, career.complaints + eff.complaints);
+      updateCareerUI();
+    }
+  }
+
+  const TECHS = [
+    { key:'dispatch', name:'调度算法升级', desc:'提升 AI 抢梯效率，并解锁【高速电梯】分支。', max:5, baseCost:1500 },
+    { key:'comfort', name:'乘梯舒适工程', desc:'降低焦躁、提升容量，并解锁【大载重电梯】分支。', max:5, baseCost:1200 },
+    { key:'reliability', name:'可靠性强化', desc:'大幅降低故障，并解锁【医院优先电梯】分支。', max:5, baseCost:1800 }
+  ];
+
+  function techUpgradeCost(key){
+    const level = career.tech[key] || 0;
+    return Math.round(TECHS.find(t=>t.key===key).baseCost * (1 + level*0.8));
+  }
+
+  function renderTechUI(){
+    techListEl.innerHTML = '';
+    TECHS.forEach(t=>{
+      const lv = career.tech[t.key]||0;
+      const cost = techUpgradeCost(t.key);
+      const item = document.createElement('div');
+      item.className = 'tech-item';
+
+      const unlockInfo = getUnlockInfoForTech(t.key, lv);
+
+      item.innerHTML = `
+        <div class="tech-title">
+          <span>${t.name}</span>
+          <span>Lv.${lv}/${t.max}</span>
+        </div>
+        <div class="tech-desc">${t.desc}</div>
+        <div class="tech-desc" style="color:#ffd54f;">${unlockInfo}</div>
+        <button class="tech-btn ${ (gameMode!=='career'||lv>=t.max||career.money<cost) ? 'disabled':'' }" data-key="${t.key}">
+          升级（${cost} 元）
+        </button>
+      `;
+      techListEl.appendChild(item);
+    });
+
+    techListEl.querySelectorAll('.tech-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if (gameMode!=='career') return;
+        const key = btn.dataset.key;
+        const t = TECHS.find(x=>x.key===key);
+        const lv = career.tech[key]||0;
+        if (lv>=t.max) return;
+        const cost = techUpgradeCost(key);
+        if (career.money<cost) { logEvent('资金不足，无法升级科技。','warn'); return; }
+        career.money-=cost;
+        career.tech[key]=lv+1;
+        logEvent(`科技升级：${t.name} -> Lv.${career.tech[key]}（花费 ${cost} 元）`,'info');
+        renderTechUI();
+        updateCareerUI();
+        initSystem();
+      });
+    });
+  }
+
+  function getUnlockInfoForTech(key, lv){
+    if (key==='dispatch') return lv>=3 ? '✅ 已解锁：高速电梯型号' : 'Lv.3 解锁：高速电梯';
+    if (key==='comfort') return lv>=3 ? '✅ 已解锁：大载重电梯型号' : 'Lv.3 解锁：大载重电梯';
+    if (key==='reliability') return lv>=3 ? '✅ 已解锁：医院优先电梯型号' : 'Lv.3 解锁：医院优先电梯';
+    return '';
+  }
+
+  function isUnlocked(modelKey){
+    const m = ELEVATOR_MODELS_UNLOCK[modelKey];
+    const need = m.need;
+    return Object.keys(need).every(k => (career.tech[k]||0) >= need[k]);
+  }
+
+  function getAvailableModelsForBuilding(btype){
+    const models = [...ELEVATOR_MODELS_BASE];
+    if (isUnlocked('highspeed')) models.push(ELEVATOR_MODELS_UNLOCK.highspeed);
+    if (isUnlocked('heavyload')) models.push(ELEVATOR_MODELS_UNLOCK.heavyload);
+    if (btype==='hospital' && isUnlocked('hospitalP')) models.push(ELEVATOR_MODELS_UNLOCK.hospitalP);
+    return models;
+  }
+
+  function pickModelForBuilding(models, btype){
+    if (btype==='hospital'){
+      const hp = models.find(m=>m.key==='hospitalP');
+      if (hp) return hp;
+    }
+    const hs = models.find(m=>m.key==='highspeed');
+    const hl = models.find(m=>m.key==='heavyload');
+    if (hs && Math.random()<0.6) return hs;
+    if (hl && Math.random()<0.5) return hl;
+    return models[Math.floor(Math.random()*models.length)];
+  }
+
+  function updateHeatmap() {
+    const bidx = settings.currentBuilding;
+    const waitingCounts = new Array(settings.floors + 1).fill(0);
+    const moodSum = new Array(settings.floors + 1).fill(0);
+    const moodNum = new Array(settings.floors + 1).fill(0);
+
+    passengers.forEach(p => {
+      if (p.state === 'waiting' && p.building===bidx) {
+        waitingCounts[p.from]++;
+        moodSum[p.from] += p.mood;
+        moodNum[p.from]++;
+      }
+    });
+
+    for (let f = 1; f <= settings.floors; f++) {
+      const inner = document.getElementById(`heat-${f}`);
+      const moodIcon = document.getElementById(`mood-${f}`);
+      if (!inner || !moodIcon) continue;
+
+      const count = waitingCounts[f];
+      const perc = Math.min(100, count * 20);
+      inner.style.width = perc + '%';
+      inner.style.opacity = count > 0 ? 0.8 : 0.15;
+
+      let avg = 100;
+      if (moodNum[f]) avg = moodSum[f] / moodNum[f];
+      let icon = '😄';
+      if (avg < 70) icon = '😐';
+      if (avg < 40) icon = '😡';
+      moodIcon.textContent = count === 0 ? '' : icon;
+    }
+  }
+
+  function triggerFault(e, type, culpritPassenger) {
+    clearInterval(e.moveTimer);
+    e.moveTimer = null;
+    movingCount = Math.max(0, movingCount - 1);
+    updateMotorSound();
+    clearTimeout(e.doorTimer);
+    clearTimeout(e.autoCloseTimer);
+
+    e.fault = type || 'FAULT';
+    e.state = 'FAULT';
+    e.direction = 0;
+    e.doorOpen = true;
+
+    shaft.classList.remove('shaking');
+    syncActiveIf(e);
+
+    if (e.building===settings.currentBuilding){
+      logEvent(`${e.name} 发生故障：${faultLabel(type)}`, 'error');
+      adTextEl.innerHTML = `${e.name}<br>故障停运`;
+      adForceUntil = Date.now() + 6000;
+      maybeGlobalSay(type==='SABOTAGE'?"有人在里面搞破坏？！":"又坏了？！", 0.25);
+    }
+
+    if (gameMode === 'career') {
+      let repLoss = 4, compAdd = 1;
+      if (type==='SABOTAGE'){
+        repLoss = career.policies.securityPatrol ? 3 : 6;
+        compAdd = career.policies.securityPatrol ? 1 : 2;
+        career.stats.sabotageIncidents += 1;
+      }
+      career.reputation = Math.max(0, career.reputation - repLoss);
+      career.complaints += compAdd;
+      updateCareerUI();
+    }
+
+    if (type==='SABOTAGE'){
+      const pid = culpritPassenger ? culpritPassenger.id : '?';
+      enqueueStory({
+        type:'sabotage',
+        title:`${e.name} · 人为破坏故障`,
+        desc:`监控显示疑似“梯毁”在轿厢内破坏按钮/门锁。\n乘客恐慌，媒体也可能闻风而来。\n\n嫌疑乘客：P${pid}\n你要怎么办？`,
+        options:[
+          { text:'👮 立刻报警 + 封闭乘梯区', effects:{ money:-800, rep:+4, complaints:-2 }, log:'你果断处置，舆论反转。' },
+          { text:'🛠️ 加急维修 + 赔偿乘客', effects:{ money:-600, rep:+2, complaints:-1 }, log:'你快速修复并安抚乘客。' },
+          { text:'🙈 尽量低调处理', effects:{ money:-200, rep:-4, complaints:+2 }, log:'你压消息，但口碑仍受损。' }
+        ]
+      });
+      return;
+    }
+
+    enqueueStory({
+      type:'fault',
+      title:`${e.name} · 突发故障`,
+      desc:`电梯运行中突然停梯，乘客情绪不稳。\n要怎么安抚与处理？`,
+      options:[
+        { text:'📢 立即广播解释+致歉', effects:{ money:-150, rep:+1, complaints:-1 }, log:'你及时解释，乘客稍安。' },
+        { text:'🛠️ 派维修加急处理', effects:{ money:-600, rep:+3, complaints:-1 }, log:'维修到位，故障快速解除。' },
+        { text:'🙈 放着先不管', effects:{ money:0, rep:-5, complaints:+2 }, log:'你拖延处理，投诉升级。' }
+      ]
+    });
+  }
+
+  function clearFault(e) {
+    e.fault = null;
+    e.state = 'IDLE';
+    e.doorOpen = true;
+    if (e.building===settings.currentBuilding){
+      logEvent(`${e.name} 故障已清除，重新投入运行`, 'info');
+      adTextEl.innerHTML = `${e.name}<br>维修完成`;
+      adForceUntil = Date.now() + 4000;
+    }
+    syncActiveIf(e);
+  }
+
+  function startAdLoop() {
+    if (adTimer) clearInterval(adTimer);
+    const ads = [
+      "星玛电梯 7000系列<br>除了慢 没有缺点",
+      "群控提示：<br>高峰期请错峰乘梯",
+      "今日实验：<br>AI 正在学习你的上班时间",
+      "安全提醒：<br>情绪激动请先深呼吸",
+      "社区通知：<br>严禁电瓶车上楼",
+      "电梯爱好者投稿：<br>“今天又坐了 23 趟！”",
+      "摄影大赛热榜：<br>#电梯打卡挑战"
+    ];
+    adTimer = setInterval(() => {
+      if (Date.now() < adForceUntil) return;
+      const anyOpen = elevators.some(e => e.doorOpen);
+      if (anyOpen) return;
+      const randomAd = ads[Math.floor(Math.random() * ads.length)];
+      adTextEl.innerHTML = randomAd;
+    }, 5000);
+  }
+
+  function maybeGlobalSay(text, prob=0.15){
+    if (Math.random() < prob){
+      adTextEl.innerHTML = `💬 乘客：<br>${escapeHTML(text)}`;
+      adForceUntil = Date.now() + 3500;
+    }
+  }
+
+  function maybeSay(p, ctx){
+    if (p.building!==settings.currentBuilding) return;
+    const line = randomSpeech(ctx, p);
+    if (!line) return;
+    logEvent(`P${p.id}：${line}`, 'say');
+    maybeGlobalSay(line, 0.18);
+  }
+
+  function randomSpeech(ctx, p){
+    const LINES = {
+      wait_start: ["哎又排队…", "希望快点来。", "电梯别又坏吧？"],
+      waiting_long: ["这也太久了吧。", "我都快迟到了！", "怎么还不到！"],
+      board: ["终于上来了。", "麻烦让一下。", "别挤别挤！"],
+      onboard: ["好挤啊…", "这趟能不停吗？", "快到快到。"],
+      leave: ["谢谢，到了。", "终于解脱。"],
+      leave_angry: ["我不等了！", "投诉！必须投诉！"],
+      fight: ["你挤什么挤！", "别推我！", "要打起来吗？"],
+      fan_photo: ["嘿嘿拍一下控制面板。", "电梯灯好好看！", "我要发朋友圈：今日电梯打卡！"],
+      saboteur: ["这电梯真烦。", "按坏它看你们怎么办。"]
+    };
+    const arr = LINES[ctx];
+    if (!arr) return null;
+
+    let talkProb = (p.personality||2) * 0.18;
+    if (p.trait==='enthusiast') talkProb += 0.12;
+    if (p.trait==='saboteur') talkProb += 0.08;
+
+    if (Math.random() > talkProb) return null;
+    return arr[Math.floor(Math.random()*arr.length)];
+  }
+
+  function updateStatusLog() {
+    const b = currentBuilding();
+    const curEs = elevators.filter(e=>e.building===settings.currentBuilding);
+    const totalWaiting = passengers.filter(p => p.state === 'waiting' && p.building===settings.currentBuilding).length;
+    const totalOnboard = passengers.filter(p => p.state === 'onboard' && curEs.some(e=>e.id===p.inElevator)).length;
+
+    const fans = passengers.filter(p=>p.state!=='done' && p.trait==='enthusiast').length;
+    const sabTotal = passengers.filter(p=>p.state!=='done' && p.trait==='saboteur').length;
+    const sabRevealed = passengers.filter(p=>p.state!=='done' && p.trait==='saboteur' && !p.disguised).length;
+
+    let html = `楼栋: ${b.label}·${BUILDING_TYPES[b.type].name}｜模式: ${gameMode ? (gameMode === 'career' ? '生涯' : '自由') : '未开始'}｜楼层: ${settings.floors}<br>`;
+    curEs.forEach(e => {
+      html += `${e.name}@F${e.currentFloor} ${stateToLabel(e.state)}${e.fault ? '[故障]' : ''} 乘客 ${e.people.length}/${e.capacity}<br>`;
+    });
+    html += `等待: ${totalWaiting} 人｜车内: ${totalOnboard} 人｜事件队列: ${storyQueue.length}<br>`;
+    html += `爱好者:${fans}｜梯毁:${sabRevealed}/${sabTotal}（已露馅/总数）｜追责:${career.strikes}｜投票:${career.voteDaysLeft==null?'-':career.voteDaysLeft+'天'}<br>`;
+    if (career.buffs.photoContestUntilDay >= career.day){
+      html += `Buff: 摄影大赛热度 ON（口碑×${career.buffs.repGainMult.toFixed(2)} 爱好者×${career.buffs.fanSpawnMult.toFixed(2)} 小费×${career.buffs.tipMult.toFixed(2)}）<br>`;
+    }
+    html += `政策: 引导员${career.policies.crowdGuide?'ON':'OFF'} / 安保${career.policies.securityPatrol?'ON':'OFF'}`;
+    statusLog.innerHTML = html;
+  }
+
+  function logEvent(text, type = 'info') {
+    const line = document.createElement('div');
+    line.className = 'event-line ' + type;
+    const time = new Date();
+    const tStr = time.toTimeString().slice(0, 8);
+    line.textContent = `[${tStr}] ${text}`;
+    eventsLog.prepend(line);
+    while (eventsLog.childElementCount > 140) eventsLog.removeChild(eventsLog.lastChild);
+  }
+
+  function currentBuilding(){
+    return settings.buildings[settings.currentBuilding] || settings.buildings[0];
+  }
+
+  function buildBuildingUI(){
+    buildingButtonsEl.innerHTML = '';
+    settings.buildings.forEach((b, idx)=>{
+      const btn = document.createElement('div');
+      btn.className = 'building-btn' + (idx===settings.currentBuilding?' active':'');
+      btn.textContent = b.label;
+      btn.addEventListener('click', ()=>{
+        settings.currentBuilding = idx;
+        saveSettings();
+        buildBuildingUI();
+        setElevators.value = currentBuilding().elevatorCount;
+        buildGroupTabs();
+        buildElevatorCards();
+        activeElevatorIndex = elevators.filter(e=>e.building===idx)[0]?.id || activeElevatorIndex;
+        syncActiveUI();
+        updateHeatmap();
+        updateStatusLog();
+        renderStoryUI();
+        restartSpawnTimer();
+        logEvent(`切换到 ${b.label} 视角（${BUILDING_TYPES[b.type].name}）`, 'info');
+      });
+      buildingButtonsEl.appendChild(btn);
+    });
+
+    const b = currentBuilding();
+    const typeInfo = BUILDING_TYPES[b.type];
+    const canEdit = gameMode !== 'career';
+
+    buildingCardEl.innerHTML = `
+      <div><b>当前楼栋：</b>${b.label}</div>
+      <div><b>类型：</b>
+        ${canEdit ? `
+          <select id="buildingTypeSelect">
+            ${Object.keys(BUILDING_TYPES).map(t=>`<option value="${t}" ${t===b.type?'selected':''}>${BUILDING_TYPES[t].name}</option>`).join('')}
+          </select>
+        ` : `<span style="color:#ffd54f;">${typeInfo.name}</span>（生涯锁定）`}
+      </div>
+      <div><b>电梯台数：</b>${b.elevatorCount}</div>
+      <div><b>客流特征：</b>${typeInfo.trafficBias==='commute'?'通勤上行密集':typeInfo.trafficBias==='mid'?'中层活跃':'随机客流'}</div>
+      <div><b>耐心系数：</b>${typeInfo.patienceBias}</div>
+    `;
+
+    if (canEdit){
+      const sel = document.getElementById('buildingTypeSelect');
+      sel.addEventListener('change', ()=>{
+        b.type = sel.value;
+        saveSettings();
+        buildBuildingUI();
+        initSystem();
+        logEvent(`${b.label} 类型更改为 ${BUILDING_TYPES[b.type].name}（自由模式）`, 'info');
+      });
+    }
+
+    buildingTipEl.textContent = canEdit
+      ? '自由模式：可随意改楼栋类型与电梯数'
+      : '生涯模式：楼栋类型由扩建设定，每栋独立运营';
+  }
+
+  function dailyPriceFactor(){
+    const sin = Math.sin(career.day / 3) * 0.15;
+    const rnd = (hash(career.day*97 + 13) - 0.5) * 0.08;
+    return 1 + sin + rnd;
+  }
+  function getBuildingExpansionCost(){
+    const base = 9000 + settings.buildings.length * 2500;
+    return Math.round(base * dailyPriceFactor());
+  }
+  function getElevatorExpansionCost(){
+    const b = currentBuilding();
+    const base = 7000 + b.elevatorCount * 3500;
+    return Math.round(base * (1 + career.day*0.02));
+  }
+  function getFloorsExpansionCost(){
+    const base = 5000 + settings.floors * 220;
+    return Math.round(base * (1 + career.day*0.015));
+  }
+
+  function ensureAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+  function updateMotorSound() { movingCount > 0 ? toggleMotorSound(true) : toggleMotorSound(false); }
+  function toggleMotorSound(on) {
+    ensureAudio();
+    if (on && !motorOsc) {
+      motorOsc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      motorOsc.connect(gain);
+      gain.connect(audioCtx.destination);
+      motorOsc.type = 'sawtooth';
+      motorOsc.frequency.value = 50;
+      gain.gain.value = 0.04;
+      motorOsc.start();
+    } else if (!on && motorOsc) {
+      motorOsc.stop();
+      motorOsc = null;
+    }
+  }
+  function playDing() {
+    ensureAudio();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.6);
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+  }
+  function playAlarm() {
+    ensureAudio();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+    osc.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.3);
+    gain.gain.value = 0.2;
+    osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+  }
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return { ...SETTINGS_DEFAULT };
+      const parsed = JSON.parse(raw);
+      const merged = { ...SETTINGS_DEFAULT, ...parsed };
+      if (!merged.buildings || !merged.buildings.length) merged.buildings = [...SETTINGS_DEFAULT.buildings];
+      merged.buildings.forEach(b=>{
+        if (!b.elevatorCount) b.elevatorCount = 1;
+        if (!b.type) b.type = 'residential';
+        if (!b.label) b.label = 'A座';
+      });
+      merged.currentBuilding = clamp(merged.currentBuilding||0, 0, merged.buildings.length-1);
+      return merged;
+    } catch (e) {
+      return { ...SETTINGS_DEFAULT };
+    }
+  }
+  function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+
+  // 显示用特质：梯毁伪装时当普通
+  function traitLabelVisible(p){
+    if (p.trait==='saboteur' && p.disguised) return '普通';
+    if (p.trait==='enthusiast') return '电梯爱好者📸';
+    if (p.trait==='saboteur') return '梯毁💣';
+    return '普通';
+  }
+  function traitLabel(t){
+    if (t==='enthusiast') return '电梯爱好者📸';
+    if (t==='saboteur') return '梯毁💣';
+    return '普通';
+  }
+
+  function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function stateToLabel(s) {
+    switch (s) {
+      case 'IDLE': return '待机';
+      case 'MOVING_UP': return '上行';
+      case 'MOVING_DOWN': return '下行';
+      case 'DOOR_OPEN': return '门开';
+      case 'DOOR_OPENING': return '开门中';
+      case 'DOOR_CLOSING': return '关门中';
+      case 'FAULT': return '故障';
+      default: return s;
+    }
+  }
+  function faultLabel(t) {
+    if (t === 'RANDOM_STOP') return '运行中停梯';
+    if (t === 'SABOTAGE') return '人为破坏故障';
+    return '未知故障';
+  }
+  function formatTime(minutes) {
+    const m = ((minutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+  }
+  function escapeHTML(str){
+    return String(str).replace(/[&<>"']/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[s]));
+  }
+  function hash(x){
+    x = Math.sin(x) * 10000;
+    return x - Math.floor(x);
+  }
+</script>
+</body>
+</html>
